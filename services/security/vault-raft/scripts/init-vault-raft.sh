@@ -121,6 +121,13 @@ if [ "$INITIALIZED" = "false" ]; then
     extract_unseal_keys
     extract_root_token
     
+    # Display root token immediately after initialization
+    if [ -f /vault/keys/root-token.txt ]; then
+        ROOT_TOKEN=$(cat /vault/keys/root-token.txt)
+        echo ""
+        echo "Root Token: $ROOT_TOKEN"
+    fi
+    
     echo ""
     echo "IMPORTANT: Backup the initialization keys immediately!"
     echo "Location: /vault/keys/vault-init.json"
@@ -313,17 +320,28 @@ fi
 echo ""
 echo "=== Vault Cluster Status ==="
 for node in $VAULT_NODES; do
-    MODE=$(VAULT_ADDR=http://$node:8200 vault status 2>/dev/null | grep "HA Mode" | awk '{print $3}')
-    SEALED=$(VAULT_ADDR=http://$node:8200 vault status 2>/dev/null | grep "Sealed" | awk '{print $2}')
+    MODE=$(VAULT_ADDR=http://$node:8200 vault status 2>/dev/null | grep "HA Mode" | awk '{print $3}' || echo "unknown")
+    SEALED=$(VAULT_ADDR=http://$node:8200 vault status 2>/dev/null | grep "Sealed" | awk '{print $2}' || echo "unknown")
     printf "%-10s: %-10s (sealed: %s)\n" "$node" "$MODE" "$SEALED"
 done
 
 echo ""
 echo "=== Vault is ready! ==="
-if [ -n "$ROOT_TOKEN" ]; then
-    echo "Root token: $ROOT_TOKEN"
+
+# Always try to read and display root token
+if [ -f /vault/keys/root-token.txt ]; then
+    ROOT_TOKEN=$(cat /vault/keys/root-token.txt)
+    if [ -n "$ROOT_TOKEN" ]; then
+        echo ""
+        echo "Root Token: $ROOT_TOKEN"
+        echo ""
+    fi
+else
+    echo ""
+    echo "Warning: Root token file not found at /vault/keys/root-token.txt"
+    echo ""
 fi
-echo ""
+
 echo "Access Vault at:"
 if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
     echo "- Single node: https://localhost:8200"
@@ -342,3 +360,6 @@ else
         echo "- HAProxy stats: http://localhost:8404/stats"
     fi
 fi
+
+# Ensure we exit cleanly
+exit 0
