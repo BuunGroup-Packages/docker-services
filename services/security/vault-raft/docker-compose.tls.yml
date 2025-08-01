@@ -94,6 +94,7 @@ services:
       VAULT_SKIP_VERIFY: "false"
     volumes:
       - vault_certs:/vault/tls:ro
+      - ./policies:/vault/policies:ro
 
   haproxy:
     depends_on:

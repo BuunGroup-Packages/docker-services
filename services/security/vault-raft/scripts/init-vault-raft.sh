@@ -284,7 +284,13 @@ if [ -f /vault/keys/root-token.txt ]; then
         for policy in admin developer application cicd auditor; do
             if [ -f "/vault/policies/${policy}.hcl" ]; then
                 echo "- Applying ${policy} policy..."
-                vault policy write ${policy} /vault/policies/${policy}.hcl 2>/dev/null || echo "  Failed to apply ${policy} policy"
+                if vault policy write ${policy} /vault/policies/${policy}.hcl; then
+                    echo "  ✓ ${policy} policy applied successfully"
+                else
+                    echo "  ✗ Failed to apply ${policy} policy"
+                fi
+            else
+                echo "- Policy file not found: /vault/policies/${policy}.hcl"
             fi
         done
         
