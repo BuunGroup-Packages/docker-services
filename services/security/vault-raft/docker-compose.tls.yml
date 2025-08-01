@@ -15,10 +15,6 @@ services:
       - vault_certs:/certs
       - ./certs:/host-certs
     command: ["--auto"]
-    profiles:
-      - ha
-      - default
-      - init
   vault-volume-permissions:
     depends_on:
       cert-generator:

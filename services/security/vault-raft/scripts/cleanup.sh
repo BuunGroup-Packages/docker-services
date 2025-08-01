@@ -103,6 +103,18 @@ if [ -n "$DANGLING" ]; then
     echo "✓ Dangling images removed"
 fi
 
+# Clean up cert-generator image
+echo ""
+echo "Checking for cert-generator image..."
+CERT_GEN_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E 'cert-generator|vault-raft.*cert-generator' || true)
+if [ -n "$CERT_GEN_IMAGE" ]; then
+    echo "Removing cert-generator image..."
+    for img in $CERT_GEN_IMAGE; do
+        docker rmi $img 2>/dev/null || true
+    done
+    echo "✓ Cert-generator image removed"
+fi
+
 # Remove any orphaned networks
 echo ""
 echo "Checking for orphaned networks..."
