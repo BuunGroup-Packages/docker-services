@@ -115,6 +115,16 @@ if [ -n "$CERT_GEN_IMAGE" ]; then
     echo "✓ Cert-generator image removed"
 fi
 
+# Clean up vault-init image
+echo ""
+echo "Checking for vault-init image..."
+VAULT_INIT_IMAGE=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E '^vault-init:latest$' || true)
+if [ -n "$VAULT_INIT_IMAGE" ]; then
+    echo "Removing vault-init image..."
+    docker rmi $VAULT_INIT_IMAGE 2>/dev/null || true
+    echo "✓ Vault-init image removed"
+fi
+
 # Remove any orphaned networks
 echo ""
 echo "Checking for orphaned networks..."

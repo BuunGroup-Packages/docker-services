@@ -34,7 +34,7 @@ services:
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
-    entrypoint: /vault/scripts/docker-entrypoint.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint.sh
     networks:
       - vault_network
     healthcheck:
@@ -101,7 +101,7 @@ services:
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
-    entrypoint: /vault/scripts/docker-entrypoint.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint.sh
     networks:
       - vault_network
     profiles:
@@ -143,7 +143,7 @@ services:
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
-    entrypoint: /vault/scripts/docker-entrypoint.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint.sh
     networks:
       - vault_network
     profiles:
@@ -163,7 +163,7 @@ services:
   # Initialize and unseal Vault
   vault-init:
     build:
-      context: ./scripts
+      context: ./scripts/start
       dockerfile: Dockerfile.init
     image: vault-init:latest
     container_name: vault-init

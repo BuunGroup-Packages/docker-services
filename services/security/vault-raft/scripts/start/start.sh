@@ -133,6 +133,20 @@ if [ "$INIT" = true ]; then
     echo "Running initialization..."
     if $COMPOSE_CMD --profile init run --rm vault-init; then
         echo -e "${GREEN}✓ Initialization complete${NC}"
+        
+        # Check if backup setup was requested
+        if docker run --rm -v vault-raft_vault_keys:/keys:ro busybox test -f /keys/setup-backups-requested 2>/dev/null; then
+            echo ""
+            echo "Setting up automated backups as requested..."
+            if [ -f "./scripts/backup/setup-cron.sh" ]; then
+                ./scripts/backup/setup-cron.sh
+                # Clean up the flag file
+                docker run --rm -v vault-raft_vault_keys:/keys busybox rm -f /keys/setup-backups-requested 2>/dev/null || true
+            else
+                echo -e "${YELLOW}Warning: Backup setup script not found${NC}"
+                echo "Please run: ./scripts/backup/setup-cron.sh"
+            fi
+        fi
     else
         echo -e "${RED}✗ Initialization failed${NC}"
         exit 1
@@ -184,6 +198,6 @@ echo "  auditor  (password: ${VAULT_AUDITOR_PASSWORD:-auditor-changeme})"
 echo ""
 
 echo "Useful commands:"
-echo "  ./scripts/verify-cluster.sh    # Check cluster health"
-echo "  ./scripts/cleanup.sh          # Clean up deployment"
+echo "  ./scripts/cleanup/verify-cluster.sh    # Check cluster health"
+echo "  ./scripts/cleanup/cleanup.sh          # Clean up deployment"
 echo ""

@@ -6,18 +6,18 @@ This guide covers backing up and restoring your HashiCorp Vault instance with Ra
 
 ### Create a Backup
 ```bash
-./scripts/backup-vault.sh
+./scripts/backup/backup-vault.sh
 ```
 
 ### List Backups
 ```bash
-./scripts/list-backups.sh
+./scripts/backup/list-backups.sh
 ```
 
 ### Restore a Backup
 ```bash
-./scripts/restore-vault.sh [TIMESTAMP]
-# Example: ./scripts/restore-vault.sh 20240801-120000
+./scripts/backup/restore-vault.sh [TIMESTAMP]
+# Example: ./scripts/backup/restore-vault.sh 20240801-120000
 ```
 
 ## What Gets Backed Up
@@ -63,11 +63,11 @@ Creates a complete backup of your Vault instance.
 **Usage:**
 ```bash
 # Basic backup (uses root token from container if available)
-./scripts/backup-vault.sh
+./scripts/backup/backup-vault.sh
 
 # Backup with specific root token
 export VAULT_TOKEN="hvs.xxxxxxxxxxxxx"
-./scripts/backup-vault.sh
+./scripts/backup/backup-vault.sh
 ```
 
 ### restore-vault.sh
@@ -82,10 +82,10 @@ Restores Vault from a backup to the same or different machine.
 **Usage:**
 ```bash
 # Interactive restore (lists available backups)
-./scripts/restore-vault.sh
+./scripts/backup/restore-vault.sh
 
 # Direct restore
-./scripts/restore-vault.sh 20240801-120000
+./scripts/backup/restore-vault.sh 20240801-120000
 ```
 
 ### list-backups.sh
@@ -102,7 +102,7 @@ Verifies backup integrity.
 
 **Usage:**
 ```bash
-./scripts/verify-backup.sh 20240801-120000
+./scripts/backup/verify-backup.sh 20240801-120000
 ```
 
 **Checks:**
@@ -112,21 +112,114 @@ Verifies backup integrity.
 - Snapshot format
 
 ### backup-cron.sh
-Wrapper for automated backups via cron.
+Wrapper for automated backups via cron with Google Drive support.
 
 **Features:**
+- Hourly and daily backup modes
+- Google Drive integration
 - Logging to files
 - Retention management
 - Lock file to prevent concurrent runs
 - Automatic verification
 
+**Usage:**
+```bash
+# Daily backup (default)
+./scripts/backup/backup-cron.sh
+
+# Hourly backup
+./scripts/backup/backup-cron.sh hourly
+```
+
+## Google Drive Integration
+
+### Setup Google Drive
+
+Configure Google Drive backup uploads:
+```bash
+./scripts/google/gdrive-setup.sh
+```
+
+**Requirements:**
+1. Google Cloud Console project with Google Drive API enabled
+2. Service Account with JSON key file
+3. Google Drive folder shared with the service account
+4. Python 3 with pyjwt and requests packages (optional, for better compatibility)
+   OR Google Cloud SDK installed (optional)
+
+**Features:**
+- Automatic upload after local backup
+- Hourly backups: 24-hour rotation on Google Drive
+- Daily backups: Configurable retention (default 30 days)
+- Enable/disable per backup type
+
+### Authentication Methods
+
+The Google Drive integration supports multiple authentication methods:
+
+1. **Python Helper** (Recommended)
+   ```bash
+   pip install pyjwt requests
+   ```
+   Uses the included `gdrive-auth.py` script for JWT generation
+
+2. **Google Cloud SDK**
+   ```bash
+   # Install gcloud CLI
+   curl https://sdk.cloud.google.com | bash
+   ```
+   Uses `gcloud auth` for token generation
+
+3. **Manual Setup**
+   If neither is available, the script will provide instructions
+
+### Google Drive Scripts
+
+**gdrive-upload.sh**
+```bash
+# Manual upload
+./scripts/google/gdrive-upload.sh /path/to/backup/directory
+
+# Upload with type (for rotation management)
+./scripts/google/gdrive-upload.sh /path/to/backup hourly
+./scripts/google/gdrive-upload.sh /path/to/backup daily
+```
+
+**gdrive-setup.sh**
+- Interactive setup wizard
+- Configures Service Account authentication
+- Tests connection
+- Saves credentials securely
+- Provides step-by-step Google Cloud setup instructions
+
 ## Automated Backups
 
-### Using Cron
+### Quick Setup
 
-Add to crontab for daily backups at 2 AM:
+Use the automated setup script:
 ```bash
-0 2 * * * /path/to/vault-raft/scripts/backup-cron.sh
+./scripts/backup/setup-cron.sh
+```
+
+Options:
+1. Hourly backups only (24-hour rotation)
+2. Daily backups only (30-day retention)
+3. Both hourly and daily backups
+4. Remove all backup cron jobs
+
+### Manual Cron Setup
+
+Add to crontab for different schedules:
+```bash
+# Hourly backups
+0 * * * * /path/to/vault-raft/scripts/backup/backup-cron.sh hourly
+
+# Daily backups at 2 AM
+0 2 * * * /path/to/vault-raft/scripts/backup/backup-cron.sh daily
+
+# Both schedules
+0 * * * * /path/to/vault-raft/scripts/backup/backup-cron.sh hourly
+0 2 * * * /path/to/vault-raft/scripts/backup/backup-cron.sh daily
 ```
 
 ### Using systemd Timer
@@ -140,7 +233,7 @@ Requires=docker.service
 
 [Service]
 Type=oneshot
-ExecStart=/path/to/vault-raft/scripts/backup-cron.sh
+ExecStart=/path/to/vault-raft/scripts/backup/backup-cron.sh
 User=your-user
 ```
 
@@ -183,10 +276,10 @@ export VAULT_BACKUP_RETENTION_COUNT=10
 Restore after configuration changes or issues:
 ```bash
 # 1. List backups
-./scripts/list-backups.sh
+./scripts/backup/list-backups.sh
 
 # 2. Restore specific backup
-./scripts/restore-vault.sh 20240801-120000
+./scripts/backup/restore-vault.sh 20240801-120000
 ```
 
 ### Cross-Machine Migration
@@ -196,7 +289,7 @@ Move Vault to a new VM:
 **On Source Machine:**
 ```bash
 # 1. Create backup
-./scripts/backup-vault.sh
+./scripts/backup/backup-vault.sh
 
 # 2. Copy backup directory to new machine
 rsync -av backups/20240801-120000/ user@new-vm:/path/to/vault-raft/backups/20240801-120000/
@@ -209,7 +302,7 @@ git clone <your-repo>
 cd vault-raft
 
 # 2. Restore backup
-./scripts/restore-vault.sh 20240801-120000
+./scripts/backup/restore-vault.sh 20240801-120000
 ```
 
 ### TLS to Non-TLS Migration
@@ -217,7 +310,7 @@ cd vault-raft
 The restore script handles this automatically:
 ```bash
 # Backup was created with TLS, restore without TLS
-./scripts/restore-vault.sh 20240801-120000
+./scripts/backup/restore-vault.sh 20240801-120000
 
 # The script will warn about TLS mismatch but proceed
 ```
@@ -243,7 +336,7 @@ The restore script handles this automatically:
    cp -r /backup-location/* backups/
    
    # Restore
-   ./scripts/restore-vault.sh
+   ./scripts/backup/restore-vault.sh
    ```
 
 ### Partial Recovery
@@ -252,13 +345,13 @@ If Vault is running but data is corrupted:
 
 1. **Export Current State** (if possible)
    ```bash
-   ./scripts/backup-vault.sh
+   ./scripts/backup/backup-vault.sh
    ```
 
 2. **Clean and Restore**
    ```bash
-   ./scripts/cleanup.sh
-   ./scripts/restore-vault.sh <good-backup-timestamp>
+   ./scripts/cleanup/cleanup.sh
+   ./scripts/backup/restore-vault.sh <good-backup-timestamp>
    ```
 
 ## Security Considerations
@@ -313,13 +406,13 @@ Backups contain:
    ```bash
    # Provide token manually
    export VAULT_TOKEN="your-root-token"
-   ./scripts/backup-vault.sh
+   ./scripts/backup/backup-vault.sh
    ```
 
 ### Restore Fails
 
 1. **"Invalid backup - manifest.json not found"**
-   - Verify backup integrity: `./scripts/verify-backup.sh TIMESTAMP`
+   - Verify backup integrity: `./scripts/backup/verify-backup.sh TIMESTAMP`
 
 2. **"Failed to restore snapshot"**
    - Ensure Vault is unsealed

@@ -9,7 +9,7 @@ services:
   # Certificate generator - runs before any other service
   cert-generator:
     build:
-      context: ./scripts
+      context: ./scripts/start
       dockerfile: Dockerfile.cert-generator
     volumes:
       - vault_certs:/certs
@@ -36,8 +36,7 @@ services:
       - vault_certs:/vault/tls:ro
       - vault_backups:/vault/backups
       - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
-      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
-    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint-tls.sh
 
   vault-2-volume-permissions:
     depends_on:
@@ -60,8 +59,7 @@ services:
       - vault_certs:/vault/tls:ro
       - vault_backups:/vault/backups
       - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
-      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
-    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint-tls.sh
 
   vault-3-volume-permissions:
     depends_on:
@@ -84,8 +82,7 @@ services:
       - vault_certs:/vault/tls:ro
       - vault_backups:/vault/backups
       - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
-      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
-    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+    entrypoint: /vault/scripts/start/docker-entrypoint-tls.sh
 
   vault-init:
     depends_on:

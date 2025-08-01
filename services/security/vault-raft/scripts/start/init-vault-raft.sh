@@ -98,13 +98,29 @@ unseal_node() {
 
 # Check if any node is initialized
 INITIALIZED=false
-for node in $VAULT_NODES; do
-    if VAULT_ADDR=http://$node:8200 vault status 2>&1 | grep -q "Initialized.*true"; then
-        INITIALIZED=true
-        echo "Vault cluster is already initialized"
-        break
-    fi
-done
+
+# First check if we can get root token from volume (most reliable method)
+ROOT_TOKEN=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
+if [ -n "$ROOT_TOKEN" ]; then
+    INITIALIZED=true
+    echo "Vault cluster is already initialized (found root token in volume)"
+else
+    # Fallback: check via API
+    for node in $VAULT_NODES; do
+        # Use correct protocol based on TLS detection
+        if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+            node_addr="https://$node:8200"
+        else
+            node_addr="http://$node:8200"
+        fi
+        
+        if VAULT_ADDR=$node_addr vault status 2>&1 | grep -q "Initialized.*true"; then
+            INITIALIZED=true
+            echo "Vault cluster is already initialized"
+            break
+        fi
+    done
+fi
 
 if [ "$INITIALIZED" = "false" ]; then
     echo ""
@@ -254,11 +270,20 @@ if [ -z "$ACTIVE_NODE" ]; then
 fi
 
 echo "Active node: $ACTIVE_NODE"
-export VAULT_ADDR=http://$ACTIVE_NODE:8200
+
+# Set correct protocol for active node
+if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+    export VAULT_ADDR=https://$ACTIVE_NODE:8200
+else
+    export VAULT_ADDR=http://$ACTIVE_NODE:8200
+fi
 
 # Login with root token
-if [ -f /vault/keys/root-token.txt ]; then
-    ROOT_TOKEN=$(cat /vault/keys/root-token.txt)
+if [ -z "$ROOT_TOKEN" ]; then
+    ROOT_TOKEN=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
+fi
+
+if [ -n "$ROOT_TOKEN" ]; then
     echo ""
     echo "Logging in to Vault..."
     vault login "$ROOT_TOKEN" >/dev/null 2>&1
@@ -276,6 +301,9 @@ if [ -f /vault/keys/root-token.txt ]; then
         
         echo "- Creating KV v2 secrets engine..."
         vault secrets enable -version=2 -path=secret kv 2>/dev/null || true
+        
+        echo "- Creating user credentials KV engine..."
+        vault secrets enable -version=2 -path=vault kv 2>/dev/null || true
         
         echo ""
         echo "Applying production policies..."
@@ -295,30 +323,58 @@ if [ -f /vault/keys/root-token.txt ]; then
         done
         
         echo ""
-        echo "Creating default users..."
+        echo "Creating default users with secure random passwords..."
         
-        # Create admin user
-        vault write auth/userpass/users/admin \
-            password="${VAULT_ADMIN_PASSWORD:-admin-changeme}" \
-            policies="admin" 2>/dev/null && echo "- Created admin user (password: ${VAULT_ADMIN_PASSWORD:-admin-changeme})"
+        # Function to generate secure password
+        generate_password() {
+            # Generate 24-character password using /dev/urandom and base64
+            # Remove problematic characters and truncate to 24 chars
+            head -c 32 /dev/urandom | base64 | tr -d "=+/\n" | cut -c1-24
+        }
         
-        # Create developer user
-        vault write auth/userpass/users/developer \
-            password="${VAULT_DEV_PASSWORD:-dev-changeme}" \
-            policies="developer" 2>/dev/null && echo "- Created developer user (password: ${VAULT_DEV_PASSWORD:-dev-changeme})"
+        # Create users with generated passwords and store in Vault
+        users="admin developer cicd auditor"
         
-        # Create CI/CD user
-        vault write auth/userpass/users/cicd \
-            password="${VAULT_CICD_PASSWORD:-cicd-changeme}" \
-            policies="cicd" 2>/dev/null && echo "- Created cicd user (password: ${VAULT_CICD_PASSWORD:-cicd-changeme})"
-        
-        # Create auditor user
-        vault write auth/userpass/users/auditor \
-            password="${VAULT_AUDITOR_PASSWORD:-auditor-changeme}" \
-            policies="auditor" 2>/dev/null && echo "- Created auditor user (password: ${VAULT_AUDITOR_PASSWORD:-auditor-changeme})"
+        for user in $users; do
+            # Generate secure password
+            password=$(generate_password)
+            
+            # Create user with generated password
+            if vault write auth/userpass/users/$user \
+                password="$password" \
+                policies="$user" 2>/dev/null; then
+                
+                # Store credentials in Vault KV with metadata
+                vault kv metadata put vault/users/$user \
+                    created="$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                    description="Auto-generated user account" 2>/dev/null || true
+                
+                vault kv put vault/users/$user \
+                    username="$user" \
+                    password="$password" 2>/dev/null
+                
+                echo "- Created $user user (password stored in vault/users/$user)"
+            else
+                echo "- Failed to create $user user"
+            fi
+        done
         
         echo ""
         echo "✓ Initial configuration complete"
+        
+        echo ""
+        echo "=== User Account Information ==="
+        echo "User passwords have been securely generated and stored in Vault."
+        echo ""
+        echo "To retrieve user credentials:"
+        echo "  vault kv get vault/users/admin"
+        echo "  vault kv get vault/users/developer" 
+        echo "  vault kv get vault/users/cicd"
+        echo "  vault kv get vault/users/auditor"
+        echo ""
+        echo "Or to get just the password:"
+        echo "  vault kv get -field=password vault/users/admin"
+        echo ""
     fi
 fi
 
@@ -366,6 +422,33 @@ else
         echo "- HAProxy stats: http://localhost:8404/stats"
     fi
 fi
+
+# Offer to set up automated backups
+echo ""
+echo "=== Automated Backup Setup ==="
+echo ""
+echo "Would you like to set up automated backups for your Vault?"
+echo "This will configure:"
+echo "- Hourly backups with 24-hour retention"
+echo "- Optional Google Drive cloud storage"
+echo "- Automated cron job scheduling"
+echo ""
+read -p "Set up automated backups now? (Y/n): " setup_backups
+setup_backups=${setup_backups:-Y}
+
+if [ "$setup_backups" = "Y" ] || [ "$setup_backups" = "y" ]; then
+    echo ""
+    echo "Backup setup will be configured automatically after initialization..."
+    # Create flag file for host script to detect
+    touch /vault/keys/setup-backups-requested
+else
+    echo ""
+    echo "You can set up backups later by running:"
+    echo "  ./scripts/backup/setup-cron.sh"
+fi
+
+echo ""
+echo "Vault initialization and setup complete!"
 
 # Ensure we exit cleanly
 exit 0

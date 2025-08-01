@@ -7,9 +7,11 @@ Production-ready Vault setup using integrated Raft storage for high availability
 - **Integrated Storage**: Raft consensus protocol built into Vault
 - **High Availability**: 3-node cluster with automatic leader election
 - **No External Dependencies**: No need for Consul or external databases
-- **Automatic Backups**: Built-in snapshot capabilities
+- **Automatic Backups**: Built-in snapshot capabilities with Google Drive integration
 - **Simple Operations**: Easier to manage than external storage backends
 - **Load Balancing**: HAProxy for distributing client requests
+- **Google Drive Backups**: Optional cloud backup with automatic rotation
+- **Hourly/Daily Backups**: Flexible scheduling with retention policies
 
 ## Architecture
 
@@ -35,19 +37,23 @@ The easiest way to start Vault is using the provided start script:
 
 ```bash
 # Single node mode (default)
-./scripts/start.sh
+./scripts/start/start.sh
+
+# Single node mode with TLS (default)
+./scripts/start/start.sh --tls
+
 
 # HA mode with 3 nodes
-./scripts/start.sh --ha
+./scripts/start/start.sh --ha
 
 # HA mode with TLS enabled
-./scripts/start.sh --ha --tls
+./scripts/start/start.sh --ha --tls
 
 # Start without auto-initialization
-./scripts/start.sh --ha --no-init
+./scripts/start/start.sh --ha --no-init
 
 # Show help
-./scripts/start.sh --help
+./scripts/start/start.sh --help
 ```
 
 The start script will:
@@ -55,6 +61,8 @@ The start script will:
 - Start the appropriate services based on your options
 - Wait for services to be ready
 - Run initialization automatically (unless `--no-init` is specified)
+- Create users with secure auto-generated passwords stored in `vault/users/`
+- Offer to set up automated backups with optional Google Drive integration
 - Display access URLs and credentials
 
 ### Manual Start (Single Node)
@@ -112,14 +120,26 @@ This script will:
 
 #### Default Users Created
 
-| Username | Default Password | Policy | Access Level |
+| Username | Password Storage | Policy | Access Level |
 |----------|-----------------|--------|--------------|
-| admin | admin-changeme | admin | Full administrative access |
-| developer | dev-changeme | developer | Developer resources & personal namespace |
-| cicd | cicd-changeme | cicd | CI/CD deployment access |
-| auditor | auditor-changeme | auditor | Read-only audit access |
+| admin | `vault/users/admin` | admin | Full administrative access |
+| developer | `vault/users/developer` | developer | Developer resources & personal namespace |
+| cicd | `vault/users/cicd` | cicd | CI/CD deployment access |
+| auditor | `vault/users/auditor` | auditor | Read-only audit access |
 
-**Important**: Change these passwords immediately in production by setting environment variables in `.env`
+**Secure Password Management**: User passwords are automatically generated as secure 24-character random strings and stored in Vault's KV engine at `vault/users/{username}`.
+
+**Retrieving User Passwords**:
+```bash
+# Get full credential information
+vault kv get vault/users/admin
+
+# Get just the password
+vault kv get -field=password vault/users/admin
+
+# Login with retrieved password
+vault login -method=userpass username=admin
+```
 
 ### 3. Access Vault
 
@@ -251,16 +271,16 @@ Complete backup and restore functionality is provided. See [BACKUP.md](BACKUP.md
 
 ```bash
 # Create a complete backup (includes everything)
-./scripts/backup-vault.sh
+./scripts/backup/backup-vault.sh
 
 # List available backups
-./scripts/list-backups.sh
+./scripts/backup/list-backups.sh
 
 # Restore from backup
-./scripts/restore-vault.sh [TIMESTAMP]
+./scripts/backup/restore-vault.sh [TIMESTAMP]
 
 # Verify backup integrity
-./scripts/verify-backup.sh [TIMESTAMP]
+./scripts/backup/verify-backup.sh [TIMESTAMP]
 ```
 
 ### What's Backed Up
@@ -274,7 +294,7 @@ Complete backup and restore functionality is provided. See [BACKUP.md](BACKUP.md
 
 ```bash
 # Add to crontab for daily 2 AM backups
-0 2 * * * /path/to/vault-raft/scripts/backup-cron.sh
+0 2 * * * /path/to/vault-raft/scripts/backup/backup-cron.sh
 
 # Configure retention (in backup-cron.sh)
 RETENTION_DAYS=30    # Keep for 30 days
@@ -337,7 +357,7 @@ For production:
 
 ```bash
 # Generate CA and certificates for all nodes
-./scripts/generate-tls.sh
+./scripts/start/generate-tls.sh
 ```
 
 This creates:
@@ -591,20 +611,22 @@ docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault policy list
 #### Create Users with Policies
 
 ```bash
-# Create admin user
-docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault write auth/userpass/users/admin \
-  password=changeme \
-  policies=admin
+# Users are automatically created during initialization with secure passwords
+# To retrieve credentials for existing users:
+docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault kv get vault/users/admin
+docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault kv get vault/users/developer
+docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault kv get vault/users/cicd
 
-# Create developer user
-docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault write auth/userpass/users/developer \
-  password=changeme \
+# To create additional users with secure passwords:
+SECURE_PASSWORD=$(head -c 32 /dev/urandom | base64 | tr -d "=+/\n" | cut -c1-24)
+docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault write auth/userpass/users/newuser \
+  password="$SECURE_PASSWORD" \
   policies=developer
 
-# Create CI/CD service account
-docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault write auth/userpass/users/cicd \
-  password=changeme \
-  policies=cicd
+# Store the credentials in Vault
+docker exec -e VAULT_TOKEN=$VAULT_TOKEN vault vault kv put vault/users/newuser \
+  username=newuser \
+  password="$SECURE_PASSWORD"
 ```
 
 ## Troubleshooting
@@ -635,26 +657,60 @@ If cluster splits:
 
 ## Utility Scripts
 
+Scripts are organized into logical folders for better maintainability:
+
+```
+scripts/
+├── backup/          # Backup and restore operations
+│   ├── backup-vault.sh       # Create backups
+│   ├── restore-vault.sh      # Restore from backups  
+│   ├── list-backups.sh       # List available backups
+│   ├── verify-backup.sh      # Verify backup integrity
+│   ├── backup-cron.sh        # Automated backup wrapper
+│   └── setup-cron.sh         # Setup backup cron jobs
+├── google/          # Google Drive integration
+│   ├── gdrive-setup.sh       # Configure Google Drive
+│   ├── gdrive-upload.sh      # Upload to Google Drive
+│   └── gdrive-auth.py        # Service account authentication
+├── start/           # Vault initialization and startup
+│   ├── start.sh              # Main startup script
+│   ├── init-vault-raft.sh    # Vault initialization
+│   ├── generate-tls.sh       # TLS certificate generation
+│   └── docker-entrypoint*.sh # Container entry points
+└── cleanup/         # Maintenance and cleanup
+    ├── cleanup.sh            # Clean up deployment
+    └── verify-cluster.sh     # Cluster health checks
+```
+
 ### Start Script
 
 Quick start with automatic initialization:
 ```bash
-./scripts/start.sh              # Single node
-./scripts/start.sh --ha         # HA mode (3 nodes)
-./scripts/start.sh --tls        # Single node with TLS
-./scripts/start.sh --ha --tls   # HA mode with TLS
+./scripts/start/start.sh              # Single node
+./scripts/start/start.sh --ha         # HA mode (3 nodes)
+./scripts/start/start.sh --tls        # Single node with TLS
+./scripts/start/start.sh --ha --tls   # HA mode with TLS
 ```
 
 ### Backup Scripts
 
-Complete backup and restore functionality:
+Complete backup and restore functionality with Google Drive integration:
 ```bash
-./scripts/backup-vault.sh       # Create backup
-./scripts/restore-vault.sh      # Restore from backup
-./scripts/list-backups.sh       # List all backups
-./scripts/verify-backup.sh      # Verify backup integrity
-./scripts/backup-cron.sh        # Automated backup wrapper
+./scripts/backup/backup-vault.sh       # Create backup
+./scripts/backup/restore-vault.sh      # Restore from backup
+./scripts/backup/list-backups.sh       # List all backups
+./scripts/backup/verify-backup.sh      # Verify backup integrity
+./scripts/backup/backup-cron.sh        # Automated backup wrapper
+./scripts/google/gdrive-setup.sh       # Configure Google Drive uploads
+./scripts/backup/setup-cron.sh         # Setup automated backups
 ```
+
+**Features:**
+- Local and Google Drive backups
+- Hourly backups with 24-hour rotation
+- Daily backups with configurable retention
+- Automatic upload to Google Drive
+- Easy cron job setup
 
 See [BACKUP.md](BACKUP.md) for detailed backup documentation.
 
@@ -664,7 +720,7 @@ A smart cleanup script that automatically detects what's running:
 
 ```bash
 # Clean up everything (auto-detects HA/single/TLS mode)
-./scripts/cleanup.sh
+./scripts/cleanup/cleanup.sh
 ```
 
 The cleanup script will:
@@ -683,16 +739,16 @@ If you're copying this setup to a remote server:
 
 ```bash
 # Make scripts executable
-chmod +x ./scripts/*.sh
+chmod +x ./scripts/**/*.sh
 
 # Run cleanup
-./scripts/cleanup.sh
+./scripts/cleanup/cleanup.sh
 ```
 
 ### Start Script Options
 
 ```bash
-./scripts/start.sh [options]
+./scripts/start/start.sh [options]
 
 Options:
   --ha        Start in HA mode (3 nodes)
@@ -701,10 +757,10 @@ Options:
   --help      Show help
 
 Examples:
-  ./scripts/start.sh                    # Single node, no TLS
-  ./scripts/start.sh --ha               # HA mode, no TLS
-  ./scripts/start.sh --ha --tls         # HA mode with TLS
-  ./scripts/start.sh --tls              # Single node with TLS
+  ./scripts/start/start.sh                    # Single node, no TLS
+  ./scripts/start/start.sh --ha               # HA mode, no TLS
+  ./scripts/start/start.sh --ha --tls         # HA mode with TLS
+  ./scripts/start/start.sh --tls              # Single node with TLS
 ```
 
 ## Migration from Other Backends

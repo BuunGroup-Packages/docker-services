@@ -88,18 +88,24 @@ EOF
     if [ -n "$VAULT_TOKEN" ]; then
         docker exec -e VAULT_TOKEN="$VAULT_TOKEN" vault vault operator raft snapshot save /tmp/vault-backup.snap
     else
-        # Try to read token from file
-        if docker exec vault test -f /vault/keys/root-token.txt 2>/dev/null; then
-            ROOT_TOKEN=$(docker exec vault cat /vault/keys/root-token.txt 2>/dev/null || echo "")
+        # Try to read token from vault_keys volume
+        echo -e "  Retrieving root token from secure storage..."
+        ROOT_TOKEN=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
+        
+        if [ -n "$ROOT_TOKEN" ]; then
+            echo -e "  ${GREEN}✓ Root token retrieved${NC}"
+            docker exec -e VAULT_TOKEN="$ROOT_TOKEN" vault vault operator raft snapshot save /tmp/vault-backup.snap
+        else
+            # Try alternative volume name (in case of different project name)
+            ROOT_TOKEN=$(docker run --rm -v vault_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
             if [ -n "$ROOT_TOKEN" ]; then
+                echo -e "  ${GREEN}✓ Root token retrieved${NC}"
                 docker exec -e VAULT_TOKEN="$ROOT_TOKEN" vault vault operator raft snapshot save /tmp/vault-backup.snap
             else
-                echo -e "${YELLOW}Warning: No root token found. Attempting snapshot without authentication...${NC}"
+                echo -e "${YELLOW}Warning: No root token found in vault_keys volume${NC}"
+                echo -e "${YELLOW}Attempting snapshot without authentication...${NC}"
                 docker exec vault vault operator raft snapshot save /tmp/vault-backup.snap
             fi
-        else
-            echo -e "${YELLOW}Warning: No root token available. Attempting snapshot without authentication...${NC}"
-            docker exec vault vault operator raft snapshot save /tmp/vault-backup.snap
         fi
     fi
     

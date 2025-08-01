@@ -190,8 +190,14 @@ main() {
     
     # Get root token
     ROOT_TOKEN=""
-    if docker exec vault test -f /vault/keys/root-token.txt 2>/dev/null; then
-        ROOT_TOKEN=$(docker exec vault cat /vault/keys/root-token.txt 2>/dev/null || echo "")
+    
+    # Try to read from vault_keys volume
+    echo "  Retrieving root token..."
+    ROOT_TOKEN=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
+    
+    # Try alternative volume name if first attempt failed
+    if [ -z "$ROOT_TOKEN" ]; then
+        ROOT_TOKEN=$(docker run --rm -v vault_vault_keys:/keys:ro busybox cat /keys/root-token.txt 2>/dev/null || echo "")
     fi
     
     if [ -z "$ROOT_TOKEN" ] && [ -z "$VAULT_TOKEN" ]; then

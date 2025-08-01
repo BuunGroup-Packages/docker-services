@@ -20,3 +20,7 @@ logs/
 # OS files
 .DS_Store
 Thumbs.db
+# Google Drive OAuth2 credentials and tokens
+.gdrive-config
+.gdrive-oauth-credentials.json
+.gdrive-oauth-tokens.json
