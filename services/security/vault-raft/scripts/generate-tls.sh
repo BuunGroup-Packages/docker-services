@@ -39,6 +39,7 @@ cat > ca-csr.conf <<EOF
 [req]
 distinguished_name = req_distinguished_name
 prompt = no
+x509_extensions = v3_ca
 
 [req_distinguished_name]
 C = $COUNTRY
@@ -47,9 +48,15 @@ L = $CITY
 O = $ORG
 OU = $OU
 CN = Vault CA
+
+[v3_ca]
+basicConstraints = critical,CA:TRUE
+keyUsage = critical,digitalSignature,keyCertSign,cRLSign
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer:always
 EOF
 
-openssl req -new -x509 -days $DAYS_VALID -key vault-ca-key.pem -out vault-ca.pem -config ca-csr.conf
+openssl req -new -x509 -days $DAYS_VALID -key vault-ca-key.pem -out vault-ca.pem -config ca-csr.conf -extensions v3_ca
 
 # Generate server certificates for each node
 for node in vault vault-2 vault-3; do
@@ -90,13 +97,13 @@ EOF
     # Add specific IPs based on node
     case $node in
         vault)
-            echo "IP.2 = 172.20.0.2" >> ${node}-csr.conf
+            echo "IP.2 = 172.31.0.2" >> ${node}-csr.conf
             ;;
         vault-2)
-            echo "IP.2 = 172.20.0.3" >> ${node}-csr.conf
+            echo "IP.2 = 172.31.0.3" >> ${node}-csr.conf
             ;;
         vault-3)
-            echo "IP.2 = 172.20.0.4" >> ${node}-csr.conf
+            echo "IP.2 = 172.31.0.4" >> ${node}-csr.conf
             ;;
     esac
     
@@ -120,13 +127,13 @@ EOF
     # Add specific IPs based on node
     case $node in
         vault)
-            echo "IP.2 = 172.20.0.2" >> ${node}-extfile.conf
+            echo "IP.2 = 172.31.0.2" >> ${node}-extfile.conf
             ;;
         vault-2)
-            echo "IP.2 = 172.20.0.3" >> ${node}-extfile.conf
+            echo "IP.2 = 172.31.0.3" >> ${node}-extfile.conf
             ;;
         vault-3)
-            echo "IP.2 = 172.20.0.4" >> ${node}-extfile.conf
+            echo "IP.2 = 172.31.0.4" >> ${node}-extfile.conf
             ;;
     esac
     
@@ -174,14 +181,71 @@ openssl x509 -req -in vault-client-csr.pem -CA vault-ca.pem -CAkey vault-ca-key.
 # Clean up
 rm -f vault-client-csr.pem client-csr.conf ca-csr.conf
 
+# Generate HAProxy certificate
+echo ""
+echo "5. Generating HAProxy certificate..."
+openssl genrsa -out haproxy-key.pem 4096
+
+cat > haproxy-csr.conf <<EOF
+[req]
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+prompt = no
+
+[req_distinguished_name]
+C = $COUNTRY
+ST = $STATE
+L = $CITY
+O = $ORG
+OU = $OU
+CN = haproxy
+
+[v3_req]
+keyUsage = keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+subjectAltName = @alt_names
+
+[alt_names]
+DNS.1 = haproxy
+DNS.2 = vault-haproxy
+DNS.3 = localhost
+DNS.4 = vault.local
+IP.1 = 127.0.0.1
+IP.2 = 172.31.0.5
+EOF
+
+openssl req -new -key haproxy-key.pem -out haproxy-csr.pem -config haproxy-csr.conf
+
+cat > haproxy-extfile.conf <<EOF
+subjectAltName = @alt_names
+keyUsage = keyEncipherment, dataEncipherment
+extendedKeyUsage = serverAuth
+
+[alt_names]
+DNS.1 = haproxy
+DNS.2 = vault-haproxy
+DNS.3 = localhost
+DNS.4 = vault.local
+IP.1 = 127.0.0.1
+IP.2 = 172.31.0.5
+EOF
+
+openssl x509 -req -in haproxy-csr.pem -CA vault-ca.pem -CAkey vault-ca-key.pem \
+    -CAcreateserial -out haproxy.pem -days $DAYS_VALID \
+    -extfile haproxy-extfile.conf
+
+# Create HAProxy certificate bundle (cert + key)
+cat haproxy.pem haproxy-key.pem > haproxy-cert.pem
+
+# Create CA bundle for HAProxy
+cat vault-ca.pem > haproxy-ca-bundle.pem
+
+# Clean up temporary files
+rm -f haproxy-csr.pem haproxy-csr.conf haproxy-extfile.conf
+
 # Set permissions
 find . -name "*-key.pem" -exec chmod 600 {} \;
 find . -name "*.pem" ! -name "*-key.pem" -exec chmod 644 {} \;
-
-# Create bundle for HAProxy
-echo ""
-echo "5. Creating HAProxy bundle..."
-cat vault-ca.pem > haproxy-ca-bundle.pem
 
 # Copy to host-certs if it exists (for local access)
 if [ -d "/host-certs" ]; then
@@ -204,7 +268,11 @@ echo "    vault-2:             vault-2.pem, vault-2-key.pem"
 echo "    vault-3:             vault-3.pem, vault-3-key.pem"
 echo ""
 echo "  Client Certificate:    vault-client.pem, vault-client-key.pem"
-echo "  HAProxy CA Bundle:     haproxy-ca-bundle.pem"
+echo ""
+echo "  HAProxy Certificates:"
+echo "    Certificate:         haproxy.pem, haproxy-key.pem"
+echo "    Combined Bundle:     haproxy-cert.pem"
+echo "    CA Bundle:           haproxy-ca-bundle.pem"
 echo ""
 echo "To enable TLS in Vault:"
 echo "1. Copy certificates to config directory:"

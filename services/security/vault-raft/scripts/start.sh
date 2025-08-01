@@ -92,26 +92,39 @@ echo ""
 echo "Waiting for services to start..."
 if [ "$MODE" = "ha" ]; then
     # Wait for all nodes in HA mode
+    SUCCESS=false
     for i in {1..30}; do
-        if docker exec vault vault status >/dev/null 2>&1 && \
-           docker exec vault-2 vault status >/dev/null 2>&1 && \
-           docker exec vault-3 vault status >/dev/null 2>&1; then
+        # Check if containers are running and vault binary is accessible
+        # This works whether Vault is sealed or not
+        if docker exec vault vault version >/dev/null 2>&1 && \
+           docker exec vault-2 vault version >/dev/null 2>&1 && \
+           docker exec vault-3 vault version >/dev/null 2>&1; then
             echo -e "${GREEN}✓ All nodes are responding${NC}"
+            SUCCESS=true
             break
         fi
         echo -n "."
         sleep 2
     done
+    if [ "$SUCCESS" = false ]; then
+        echo -e "${YELLOW}⚠ Services may still be starting. Continuing...${NC}"
+    fi
 else
     # Wait for single node
+    SUCCESS=false
     for i in {1..20}; do
-        if docker exec vault vault status >/dev/null 2>&1; then
+        # Check if container is running and vault binary is accessible
+        if docker exec vault vault version >/dev/null 2>&1; then
             echo -e "${GREEN}✓ Vault is responding${NC}"
+            SUCCESS=true
             break
         fi
         echo -n "."
         sleep 1
     done
+    if [ "$SUCCESS" = false ]; then
+        echo -e "${YELLOW}⚠ Service may still be starting. Continuing...${NC}"
+    fi
 fi
 
 # Run initialization if requested

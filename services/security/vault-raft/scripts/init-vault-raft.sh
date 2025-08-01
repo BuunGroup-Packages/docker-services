@@ -61,6 +61,11 @@ unseal_node() {
     
     echo "Checking $node status..."
     
+    # Set VAULT_SKIP_VERIFY for TLS connections
+    if [ "$protocol" = "https" ]; then
+        export VAULT_SKIP_VERIFY=true
+    fi
+    
     # Check if sealed
     if VAULT_ADDR=$node_addr vault status 2>&1 | grep -q "Sealed.*true"; then
         echo "Unsealing $node..."
@@ -70,9 +75,14 @@ unseal_node() {
             KEY=$(sed -n "${i}p" /vault/keys/unseal-keys.txt)
             if [ -n "$KEY" ]; then
                 echo "  Applying unseal key $i..."
-                VAULT_ADDR=$node_addr vault operator unseal "$KEY" 2>&1 | grep -E "Unseal Progress|Error" || true
+                if ! VAULT_ADDR=$node_addr vault operator unseal "$KEY" 2>&1 | grep -E "Unseal Progress|Error"; then
+                    echo "    Key application completed"
+                fi
             fi
         done
+        
+        # Give it a moment to process
+        sleep 2
         
         # Verify unsealed
         if VAULT_ADDR=$node_addr vault status 2>&1 | grep -q "Sealed.*false"; then
@@ -135,9 +145,33 @@ if [ "$VAULT_NODES" != "vault" ]; then
     if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
         protocol="https"
     fi
+    
+    # Get root token for authentication
+    ROOT_TOKEN=$(cat /vault/keys/root-token.txt)
+    export VAULT_TOKEN=$ROOT_TOKEN
+    
     for node in vault-2 vault-3; do
         echo "Joining $node to cluster..."
-        VAULT_ADDR=$protocol://$node:8200 vault operator raft join $protocol://vault:8200 2>/dev/null || echo "  $node may already be joined"
+        
+        # Check if node is already initialized (has raft data)
+        if [ "$protocol" = "https" ]; then
+            export VAULT_SKIP_VERIFY=true
+        fi
+        
+        # Try to check if already initialized
+        if VAULT_ADDR=$protocol://$node:8200 vault status 2>&1 | grep -q "Initialized.*true"; then
+            echo "  WARNING: $node appears to be already initialized"
+            echo "  This can prevent it from joining the cluster"
+            echo "  You may need to manually wipe its data volume and restart"
+        fi
+        
+        # Try to join
+        echo "  Attempting to join $node to leader at vault:8200..."
+        if VAULT_ADDR=$protocol://$node:8200 vault operator raft join -leader-ca-cert="$(cat /vault/tls/vault-ca.pem)" $protocol://vault:8200 2>&1; then
+            echo "  ✓ Successfully joined $node"
+        else
+            echo "  ✗ Failed to join $node - it may need its raft data cleared"
+        fi
     done
     
     echo ""
@@ -173,10 +207,13 @@ if [ "$VAULT_NODES" != "vault" ]; then
         sleep 10
     else
         echo "  WARNING: Cannot restart containers automatically."
-        echo "  Please run: docker restart vault-2 vault-3"
-        echo "  Waiting 20 seconds for manual restart..."
-        sleep 20
+        echo "  Trying alternative approach without restart..."
+        sleep 5
     fi
+    
+    echo ""
+    echo "Checking cluster membership..."
+    VAULT_ADDR=$protocol://vault:8200 vault operator raft list-peers || echo "  Unable to list peers"
     
     echo ""
     echo "Unsealing secondary nodes..."

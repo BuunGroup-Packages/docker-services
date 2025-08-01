@@ -16,7 +16,11 @@
       "Bash(rm:*)",
       "Bash(./scripts/start.sh:*)",
       "Bash(./scripts/cleanup.sh:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(./scripts/generate-tls.sh:*)",
+      "Bash(openssl:*)",
+      "Bash(./scripts/test-tls.sh:*)"
     ],
     "deny": []
   }
