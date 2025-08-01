@@ -11,8 +11,15 @@ else
     echo "Running in single-node mode"
 fi
 
-# Set primary Vault address
-export VAULT_ADDR=http://vault:8200
+# Set primary Vault address based on environment
+if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+    echo "TLS mode detected - using HTTPS"
+    export VAULT_ADDR=${VAULT_ADDR:-https://vault:8200}
+    # VAULT_CACERT should already be set by docker-compose.tls.yml
+else
+    echo "Non-TLS mode - using HTTP"
+    export VAULT_ADDR=http://vault:8200
+fi
 
 echo "Waiting for Vault nodes to be ready..."
 for node in $VAULT_NODES; do
@@ -46,7 +53,11 @@ extract_root_token() {
 # Function to unseal a node
 unseal_node() {
     local node=$1
-    local node_addr="http://$node:8200"
+    local protocol="http"
+    if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+        protocol="https"
+    fi
+    local node_addr="$protocol://$node:8200"
     
     echo "Checking $node status..."
     
@@ -120,9 +131,13 @@ if [ "$VAULT_NODES" != "vault" ]; then
     
     echo ""
     echo "Joining secondary nodes to cluster..."
+    protocol="http"
+    if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+        protocol="https"
+    fi
     for node in vault-2 vault-3; do
         echo "Joining $node to cluster..."
-        VAULT_ADDR=http://$node:8200 vault operator raft join http://vault:8200 2>/dev/null || echo "  $node may already be joined"
+        VAULT_ADDR=$protocol://$node:8200 vault operator raft join $protocol://vault:8200 2>/dev/null || echo "  $node may already be joined"
     done
     
     echo ""
@@ -273,8 +288,20 @@ if [ -n "$ROOT_TOKEN" ]; then
 fi
 echo ""
 echo "Access Vault at:"
-echo "- Single node: http://localhost:8200"
-if [ "$VAULT_NODES" != "vault" ]; then
-    echo "- Load balanced: http://localhost:8300 (via HAProxy)"
-    echo "- HAProxy stats: http://localhost:8404/stats"
+if [ -n "$VAULT_CACERT" ] && [ -f "$VAULT_CACERT" ]; then
+    echo "- Single node: https://localhost:8200"
+    if [ "$VAULT_NODES" != "vault" ]; then
+        echo "- Load balanced: https://localhost:8300 (via HAProxy)"
+        echo "- HAProxy stats: http://localhost:8404/stats"
+    fi
+    echo ""
+    echo "TLS Configuration:"
+    echo "  export VAULT_ADDR='https://localhost:8200'"
+    echo "  export VAULT_CACERT=\$PWD/certs/vault-ca.pem"
+else
+    echo "- Single node: http://localhost:8200"
+    if [ "$VAULT_NODES" != "vault" ]; then
+        echo "- Load balanced: http://localhost:8300 (via HAProxy)"
+        echo "- HAProxy stats: http://localhost:8404/stats"
+    fi
 fi
