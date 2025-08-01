@@ -22,16 +22,16 @@ if [ -n "$VAULT_RAFT_NODE_ID" ]; then
     esac
     
     # Check if certificates exist
-    if [ ! -f "/vault/config/certs/${CERT_NAME}.pem" ]; then
-        echo "ERROR: Certificate /vault/config/certs/${CERT_NAME}.pem not found!"
-        ls -la /vault/config/certs/
+    if [ ! -f "/vault/tls/${CERT_NAME}.pem" ]; then
+        echo "ERROR: Certificate /vault/tls/${CERT_NAME}.pem not found!"
+        ls -la /vault/tls/
         exit 1
     fi
     
     # Copy certificates to config directory
-    cp /vault/config/certs/${CERT_NAME}.pem /vault/config/
-    cp /vault/config/certs/${CERT_NAME}-key.pem /vault/config/
-    cp /vault/config/certs/vault-ca.pem /vault/config/
+    cp /vault/tls/${CERT_NAME}.pem /vault/config/
+    cp /vault/tls/${CERT_NAME}-key.pem /vault/config/
+    cp /vault/tls/vault-ca.pem /vault/config/
     
     # Create a copy of the config with the correct node_id and cert paths
     sed -e "s/VAULT_RAFT_NODE_ID_PLACEHOLDER/$VAULT_RAFT_NODE_ID/g" \

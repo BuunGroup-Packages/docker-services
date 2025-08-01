@@ -27,7 +27,37 @@ Production-ready Vault setup using integrated Raft storage for high availability
                     └─────────────┘
 ```
 
-## Quick Start (Single Node)
+## Quick Start
+
+### Using the Start Script (Recommended)
+
+The easiest way to start Vault is using the provided start script:
+
+```bash
+# Single node mode (default)
+./scripts/start.sh
+
+# HA mode with 3 nodes
+./scripts/start.sh --ha
+
+# HA mode with TLS enabled
+./scripts/start.sh --ha --tls
+
+# Start without auto-initialization
+./scripts/start.sh --ha --no-init
+
+# Show help
+./scripts/start.sh --help
+```
+
+The start script will:
+- Check and create `.env` from template if needed
+- Start the appropriate services based on your options
+- Wait for services to be ready
+- Run initialization automatically (unless `--no-init` is specified)
+- Display access URLs and credentials
+
+### Manual Start (Single Node)
 
 1. Copy environment file:
    ```bash
@@ -41,7 +71,7 @@ Production-ready Vault setup using integrated Raft storage for high availability
 
 3. Initialize Vault:
    ```bash
-   docker compose --profile init up vault-init
+   docker compose --profile init run --rm vault-init
    ```
 
 4. Access Vault UI at `http://localhost:8200`
@@ -586,6 +616,56 @@ If cluster splits:
 2. Monitor Raft metrics
 3. Increase performance_multiplier
 4. Consider adding more nodes
+
+## Utility Scripts
+
+### Cleanup Script
+
+A smart cleanup script is provided that automatically detects what's running and cleans up accordingly:
+
+```bash
+# Clean up everything (auto-detects HA/single/TLS mode)
+./scripts/cleanup.sh
+```
+
+The cleanup script will:
+- Detect if running in HA mode, single node, or with TLS
+- Stop all containers
+- Remove all volumes (including data and keys)
+- Clean up TLS certificates if present
+- Remove any orphaned Docker resources
+
+**Note**: The cleanup script automatically removes all volumes and data. This is irreversible, so make sure to backup any important data before running it.
+
+#### Running Cleanup on Remote Servers
+
+If you're copying this setup to a remote server:
+
+```bash
+# Make scripts executable
+chmod +x ./scripts/*.sh
+
+# Run cleanup
+./scripts/cleanup.sh
+```
+
+### Start Script Options
+
+```bash
+./scripts/start.sh [options]
+
+Options:
+  --ha        Start in HA mode (3 nodes)
+  --tls       Enable TLS
+  --no-init   Skip initialization
+  --help      Show help
+
+Examples:
+  ./scripts/start.sh                    # Single node, no TLS
+  ./scripts/start.sh --ha               # HA mode, no TLS
+  ./scripts/start.sh --ha --tls         # HA mode with TLS
+  ./scripts/start.sh --tls              # Single node with TLS
+```
 
 ## Migration from Other Backends
 
