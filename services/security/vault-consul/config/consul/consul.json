@@ -1,0 +1,40 @@
+{
+  "datacenter": "dc1",
+  "data_dir": "/consul/data",
+  "log_level": "INFO",
+  "log_json": true,
+  "server": true,
+  "encrypt": "",
+  "encrypt_verify_incoming": true,
+  "encrypt_verify_outgoing": true,
+  "acl": {
+    "enabled": false,
+    "default_policy": "allow",
+    "down_policy": "extend-cache"
+  },
+  "connect": {
+    "enabled": true
+  },
+  "ports": {
+    "grpc": 8502
+  },
+  "telemetry": {
+    "prometheus_retention_time": "30s"
+  },
+  "performance": {
+    "raft_multiplier": 1
+  },
+  "dns_config": {
+    "allow_stale": true,
+    "max_stale": "87600h",
+    "node_ttl": "0s",
+    "service_ttl": {
+      "*": "0s"
+    }
+  },
+  "limits": {
+    "http_max_conns_per_client": 200,
+    "rpc_max_conns_per_client": 100
+  },
+  "watches": []
+}

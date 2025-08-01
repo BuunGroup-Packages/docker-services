@@ -1,0 +1,7 @@
+FROM hashicorp/vault:latest
+
+# Install docker CLI
+RUN apk add --no-cache docker-cli
+
+# The init script is mounted at runtime
+ENTRYPOINT ["/scripts/init-vault-raft.sh"]

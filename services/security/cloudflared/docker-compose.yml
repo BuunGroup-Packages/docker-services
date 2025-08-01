@@ -1,0 +1,73 @@
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    networks:
+      - cloudflared_network
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Alternative configuration using config file
+  cloudflared-config:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-config
+    restart: unless-stopped
+    command: tunnel --config /etc/cloudflared/config.yml run
+    volumes:
+      - ./config:/etc/cloudflared:ro
+      - ./creds:/root/.cloudflared:ro
+    networks:
+      - cloudflared_network
+    profiles:
+      - config
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Management service for creating tunnels
+  cloudflared-management:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared-management
+    volumes:
+      - ./config:/etc/cloudflared
+      - ./creds:/root/.cloudflared
+    environment:
+      - CF_API_TOKEN=${CF_API_TOKEN}
+      - CF_ACCOUNT_ID=${CF_ACCOUNT_ID}
+      - TUNNEL_NAME=${TUNNEL_NAME:-my-tunnel}
+    networks:
+      - cloudflared_network
+    profiles:
+      - setup
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "if [ ! -f /root/.cloudflared/cert.pem ]; then
+        echo 'Logging in to Cloudflare...'
+        cloudflared tunnel login
+      fi
+      
+      if ! cloudflared tunnel list | grep -q ${TUNNEL_NAME}; then
+        echo 'Creating tunnel ${TUNNEL_NAME}...'
+        cloudflared tunnel create ${TUNNEL_NAME}
+      fi
+      
+      echo 'Tunnel ${TUNNEL_NAME} is ready!'
+      cloudflared tunnel list"
+
+networks:
+  cloudflared_network:
+    driver: bridge
+    
+  # External network for services to expose
+  tunnel_network:
+    external: true
+    name: tunnel_network

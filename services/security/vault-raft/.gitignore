@@ -1,0 +1,22 @@
+# Environment variables
+.env
+
+# TLS certificates
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Vault data
+data/
+logs/
+
+# Backup files
+*.bak
+*.backup
+*.snap
+
+# OS files
+.DS_Store
+Thumbs.db

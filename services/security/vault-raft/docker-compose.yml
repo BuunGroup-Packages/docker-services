@@ -1,0 +1,227 @@
+services:
+  # Fix permissions for vault volumes
+  vault-volume-permissions:
+    image: busybox:latest
+    container_name: vault-volume-permissions
+    volumes:
+      - vault_data:/vault/data
+      - vault_logs:/vault/logs
+    command: chown -R 100:100 /vault/data /vault/logs
+    networks:
+      - vault_network
+  vault:
+    image: hashicorp/vault:latest
+    container_name: vault
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    depends_on:
+      vault-volume-permissions:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://${VAULT_ADVERTISE_ADDR:-vault}:8200
+      VAULT_CLUSTER_ADDR: http://${VAULT_ADVERTISE_ADDR:-vault}:8201
+      VAULT_DISABLE_MLOCK: true
+      VAULT_RAFT_NODE_ID: vault_1
+    ports:
+      - "${VAULT_PORT:-8200}:8200"
+      - "${VAULT_CLUSTER_PORT:-8201}:8201"
+    volumes:
+      - vault_data:/vault/data
+      - vault_logs:/vault/logs
+      - ./config:/vault/config:ro
+      - ./policies:/vault/policies:ro
+      - ./scripts:/vault/scripts:ro
+    entrypoint: /vault/scripts/docker-entrypoint.sh
+    networks:
+      - vault_network
+    healthcheck:
+      test: ["CMD", "vault", "status", "-tls-skip-verify"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Fix permissions for vault-2 volumes
+  vault-2-volume-permissions:
+    image: busybox:latest
+    container_name: vault-2-volume-permissions
+    volumes:
+      - vault_data_2:/vault/data
+      - vault_logs:/vault/logs
+    command: chown -R 100:100 /vault/data /vault/logs
+    networks:
+      - vault_network
+    profiles:
+      - ha
+
+  # Fix permissions for vault-3 volumes  
+  vault-3-volume-permissions:
+    image: busybox:latest
+    container_name: vault-3-volume-permissions
+    volumes:
+      - vault_data_3:/vault/data
+      - vault_logs:/vault/logs
+    command: chown -R 100:100 /vault/data /vault/logs
+    networks:
+      - vault_network
+    profiles:
+      - ha
+
+  # Additional Vault nodes for HA cluster
+  vault-2:
+    image: hashicorp/vault:latest
+    container_name: vault-2
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    depends_on:
+      vault-2-volume-permissions:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://vault-2:8200
+      VAULT_CLUSTER_ADDR: http://vault-2:8201
+      VAULT_DISABLE_MLOCK: true
+      VAULT_RAFT_NODE_ID: vault_2
+    ports:
+      - "${VAULT_PORT_2:-8210}:8200"
+      - "${VAULT_CLUSTER_PORT_2:-8211}:8201"
+    volumes:
+      - vault_data_2:/vault/data
+      - vault_logs:/vault/logs
+      - ./config:/vault/config:ro
+      - ./policies:/vault/policies:ro
+      - ./scripts:/vault/scripts:ro
+    entrypoint: /vault/scripts/docker-entrypoint.sh
+    networks:
+      - vault_network
+    profiles:
+      - ha
+    healthcheck:
+      test: ["CMD", "vault", "status", "-tls-skip-verify"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  vault-3:
+    image: hashicorp/vault:latest
+    container_name: vault-3
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    depends_on:
+      vault-3-volume-permissions:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://vault-3:8200
+      VAULT_CLUSTER_ADDR: http://vault-3:8201
+      VAULT_DISABLE_MLOCK: true
+      VAULT_RAFT_NODE_ID: vault_3
+    ports:
+      - "${VAULT_PORT_3:-8220}:8200"
+      - "${VAULT_CLUSTER_PORT_3:-8221}:8201"
+    volumes:
+      - vault_data_3:/vault/data
+      - vault_logs:/vault/logs
+      - ./config:/vault/config:ro
+      - ./policies:/vault/policies:ro
+      - ./scripts:/vault/scripts:ro
+    entrypoint: /vault/scripts/docker-entrypoint.sh
+    networks:
+      - vault_network
+    profiles:
+      - ha
+    healthcheck:
+      test: ["CMD", "vault", "status", "-tls-skip-verify"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Initialize and unseal Vault
+  vault-init:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.init
+    image: vault-init:latest
+    container_name: vault-init
+    depends_on:
+      - vault
+    environment:
+      VAULT_ADDR: http://vault:8200
+      VAULT_SKIP_VERIFY: "true"
+      VAULT_ADMIN_PASSWORD: ${VAULT_ADMIN_PASSWORD:-admin-changeme}
+      VAULT_DEV_PASSWORD: ${VAULT_DEV_PASSWORD:-dev-changeme}
+      VAULT_CICD_PASSWORD: ${VAULT_CICD_PASSWORD:-cicd-changeme}
+      VAULT_AUDITOR_PASSWORD: ${VAULT_AUDITOR_PASSWORD:-auditor-changeme}
+    volumes:
+      - ./scripts:/scripts:ro
+      - ./policies:/vault/policies:ro
+      - vault_keys:/vault/keys
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - vault_network
+    profiles:
+      - init
+
+  # HAProxy for load balancing (HA mode)
+  haproxy:
+    image: haproxy:alpine
+    container_name: vault-haproxy
+    restart: unless-stopped
+    ports:
+      - "${HAPROXY_PORT:-8300}:8300"
+      - "${HAPROXY_STATS_PORT:-8404}:8404"
+    volumes:
+      - ./config/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      - vault_network
+    depends_on:
+      - vault
+    profiles:
+      - ha
+    healthcheck:
+      test: ["CMD", "haproxy", "-c", "-f", "/usr/local/etc/haproxy/haproxy.cfg"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  vault_data:
+    driver: local
+  vault_data_2:
+    driver: local
+  vault_data_3:
+    driver: local
+  vault_logs:
+    driver: local
+  vault_keys:
+    driver: local
+
+networks:
+  vault_network:
+    driver: bridge

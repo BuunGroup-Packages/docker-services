@@ -1,0 +1,63 @@
+# Cloudflare Tunnel Configuration
+tunnel: my-tunnel
+credentials-file: /root/.cloudflared/my-tunnel.json
+
+# Configure ingress rules
+ingress:
+  # Example: Route app.example.com to a local service
+  - hostname: app.example.com
+    service: http://app:3000
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+      
+  # Example: Route api.example.com to another service
+  - hostname: api.example.com
+    service: http://api:8000
+    originRequest:
+      noTLSVerify: false
+      httpHostHeader: api.internal
+      
+  # Example: Route specific path
+  - hostname: example.com
+    path: /admin/*
+    service: http://admin:8080
+    originRequest:
+      noTLSVerify: false
+      
+  # Example: WebSocket support
+  - hostname: ws.example.com
+    service: ws://websocket:9000
+    originRequest:
+      noTLSVerify: false
+      
+  # Example: TCP service (SSH)
+  - hostname: ssh.example.com
+    service: tcp://ssh-server:22
+    
+  # Example: File server
+  - hostname: files.example.com
+    service: http://file-server:80
+    originRequest:
+      noTLSVerify: false
+      
+  # Default catch-all rule (404)
+  - service: http_status:404
+
+# Optional: Configure metrics
+metrics: 0.0.0.0:2000
+
+# Optional: Configure logging
+loglevel: info
+
+# Optional: Configure grace period
+grace-period: 30s
+
+# Optional: Configure retries
+retries: 5
+
+# Optional: Configure protocol
+protocol: auto
+
+# Optional: Configure edge IP version
+edge-ip-version: auto

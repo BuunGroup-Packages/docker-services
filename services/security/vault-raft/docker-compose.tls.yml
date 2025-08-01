@@ -1,0 +1,108 @@
+# Override file for TLS-enabled Vault
+# Usage: docker compose -f docker-compose.yml -f docker-compose.tls.yml --profile ha up -d
+
+volumes:
+  vault_certs:
+    name: vault-raft_vault_certs
+
+services:
+  # Certificate generator - runs before any other service
+  cert-generator:
+    build:
+      context: ./scripts
+      dockerfile: Dockerfile.cert-generator
+    volumes:
+      - vault_certs:/certs
+      - ./certs:/host-certs
+    command: ["--auto"]
+    profiles:
+      - ha
+      - default
+      - init
+  vault-volume-permissions:
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+
+  vault:
+    depends_on:
+      vault-volume-permissions:
+        condition: service_completed_successfully
+      cert-generator:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: https://127.0.0.1:8200
+      VAULT_API_ADDR: https://${VAULT_ADVERTISE_ADDR:-vault}:8200
+      VAULT_CLUSTER_ADDR: https://${VAULT_ADVERTISE_ADDR:-vault}:8201
+      VAULT_CACERT: /vault/config/vault-ca.pem
+      VAULT_SKIP_VERIFY: "false"
+    volumes:
+      - vault_certs:/vault/config/certs:ro
+      - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
+      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
+    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+
+  vault-2-volume-permissions:
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+
+  vault-2:
+    depends_on:
+      vault-2-volume-permissions:
+        condition: service_completed_successfully
+      cert-generator:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: https://127.0.0.1:8200
+      VAULT_API_ADDR: https://vault-2:8200
+      VAULT_CLUSTER_ADDR: https://vault-2:8201
+      VAULT_CACERT: /vault/config/vault-ca.pem
+      VAULT_SKIP_VERIFY: "false"
+    volumes:
+      - vault_certs:/vault/config/certs:ro
+      - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
+      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
+    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+
+  vault-3-volume-permissions:
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+
+  vault-3:
+    depends_on:
+      vault-3-volume-permissions:
+        condition: service_completed_successfully
+      cert-generator:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: https://127.0.0.1:8200
+      VAULT_API_ADDR: https://vault-3:8200
+      VAULT_CLUSTER_ADDR: https://vault-3:8201
+      VAULT_CACERT: /vault/config/vault-ca.pem
+      VAULT_SKIP_VERIFY: "false"
+    volumes:
+      - vault_certs:/vault/config/certs:ro
+      - ./config/vault-tls.hcl:/vault/config/vault.hcl:ro
+      - ./scripts/docker-entrypoint-tls.sh:/vault/scripts/docker-entrypoint-tls.sh:ro
+    entrypoint: /vault/scripts/docker-entrypoint-tls.sh
+
+  vault-init:
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+    environment:
+      VAULT_ADDR: https://vault:8200
+      VAULT_CACERT: /vault/config/certs/vault-ca.pem
+      VAULT_SKIP_VERIFY: "false"
+    volumes:
+      - vault_certs:/vault/config/certs:ro
+
+  haproxy:
+    depends_on:
+      cert-generator:
+        condition: service_completed_successfully
+    volumes:
+      - ./config/haproxy-tls.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - vault_certs:/etc/ssl/certs:ro

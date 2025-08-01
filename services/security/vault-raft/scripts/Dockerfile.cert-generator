@@ -1,0 +1,10 @@
+FROM alpine:latest
+
+RUN apk add --no-cache openssl bash
+
+COPY generate-tls.sh /generate-tls.sh
+RUN chmod +x /generate-tls.sh
+
+WORKDIR /certs
+
+ENTRYPOINT ["/generate-tls.sh"]
