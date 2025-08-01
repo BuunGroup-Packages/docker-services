@@ -245,24 +245,40 @@ docker exec new-vault vault operator raft join http://vault:8200
 
 ## Backup Strategies
 
-### Automated Snapshots
+Complete backup and restore functionality is provided. See [BACKUP.md](BACKUP.md) for detailed documentation.
 
-Create a cron job for regular snapshots:
+### Quick Start
 
 ```bash
-# backup-vault.sh
-#!/bin/bash
-DATE=$(date +%Y%m%d-%H%M%S)
-docker exec vault vault operator raft snapshot save /vault/data/snapshot-$DATE.snap
-docker cp vault:/vault/data/snapshot-$DATE.snap ./backups/
-find ./backups -name "snapshot-*.snap" -mtime +7 -delete
+# Create a complete backup (includes everything)
+./scripts/backup-vault.sh
+
+# List available backups
+./scripts/list-backups.sh
+
+# Restore from backup
+./scripts/restore-vault.sh [TIMESTAMP]
+
+# Verify backup integrity
+./scripts/verify-backup.sh [TIMESTAMP]
 ```
 
-### Backup Retention
+### What's Backed Up
+
+- **Raft Snapshots**: All Vault data, secrets, policies, auth methods
+- **Initialization Keys**: Unseal keys and root token
+- **Configuration**: All config files, policies, scripts
+- **TLS Certificates**: If TLS is enabled
+
+### Automated Backups
 
 ```bash
-# Add to crontab
-0 2 * * * /path/to/backup-vault.sh
+# Add to crontab for daily 2 AM backups
+0 2 * * * /path/to/vault-raft/scripts/backup-cron.sh
+
+# Configure retention (in backup-cron.sh)
+RETENTION_DAYS=30    # Keep for 30 days
+RETENTION_COUNT=10   # Keep 10 most recent
 ```
 
 ## Monitoring
@@ -619,9 +635,32 @@ If cluster splits:
 
 ## Utility Scripts
 
+### Start Script
+
+Quick start with automatic initialization:
+```bash
+./scripts/start.sh              # Single node
+./scripts/start.sh --ha         # HA mode (3 nodes)
+./scripts/start.sh --tls        # Single node with TLS
+./scripts/start.sh --ha --tls   # HA mode with TLS
+```
+
+### Backup Scripts
+
+Complete backup and restore functionality:
+```bash
+./scripts/backup-vault.sh       # Create backup
+./scripts/restore-vault.sh      # Restore from backup
+./scripts/list-backups.sh       # List all backups
+./scripts/verify-backup.sh      # Verify backup integrity
+./scripts/backup-cron.sh        # Automated backup wrapper
+```
+
+See [BACKUP.md](BACKUP.md) for detailed backup documentation.
+
 ### Cleanup Script
 
-A smart cleanup script is provided that automatically detects what's running and cleans up accordingly:
+A smart cleanup script that automatically detects what's running:
 
 ```bash
 # Clean up everything (auto-detects HA/single/TLS mode)
@@ -634,6 +673,7 @@ The cleanup script will:
 - Remove all volumes (including data and keys)
 - Clean up TLS certificates if present
 - Remove any orphaned Docker resources
+- Clean up cert-generator image
 
 **Note**: The cleanup script automatically removes all volumes and data. This is irreversible, so make sure to backup any important data before running it.
 

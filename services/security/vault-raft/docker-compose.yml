@@ -30,6 +30,7 @@ services:
     volumes:
       - vault_data:/vault/data
       - vault_logs:/vault/logs
+      - vault_backups:/vault/backups
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
@@ -96,6 +97,7 @@ services:
     volumes:
       - vault_data_2:/vault/data
       - vault_logs:/vault/logs
+      - vault_backups:/vault/backups
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
@@ -137,6 +139,7 @@ services:
     volumes:
       - vault_data_3:/vault/data
       - vault_logs:/vault/logs
+      - vault_backups:/vault/backups
       - ./config:/vault/config:ro
       - ./policies:/vault/policies:ro
       - ./scripts:/vault/scripts:ro
@@ -220,6 +223,8 @@ volumes:
   vault_logs:
     driver: local
   vault_keys:
+    driver: local
+  vault_backups:
     driver: local
 
 networks:

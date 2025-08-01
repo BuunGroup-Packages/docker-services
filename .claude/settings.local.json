@@ -20,7 +20,8 @@
       "Bash(grep:*)",
       "Bash(./scripts/generate-tls.sh:*)",
       "Bash(openssl:*)",
-      "Bash(./scripts/test-tls.sh:*)"
+      "Bash(./scripts/test-tls.sh:*)",
+      "WebFetch(domain:developers.cloudflare.com)"
     ],
     "deny": []
   }
