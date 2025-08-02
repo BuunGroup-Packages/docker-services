@@ -1,0 +1,81 @@
+services:
+  # Backup service that runs on schedule
+  vault-backup:
+    image: hashicorp/vault:latest
+    container_name: vault-backup
+    profiles:
+      - backup
+    depends_on:
+      - vault
+    environment:
+      VAULT_ADDR: http://vault:8200
+      BACKUP_SCHEDULE: "${BACKUP_SCHEDULE:-0 * * * *}"  # Default: hourly
+      BACKUP_RETENTION_DAYS: "${BACKUP_RETENTION_DAYS:-30}"
+      GDRIVE_ENABLED: "${GDRIVE_ENABLED:-false}"
+      GDRIVE_CLIENT_ID: "${GDRIVE_CLIENT_ID}"
+      GDRIVE_CLIENT_SECRET: "${GDRIVE_CLIENT_SECRET}"
+      GDRIVE_FOLDER_ID: "${GDRIVE_FOLDER_ID}"
+    volumes:
+      - vault_keys:/vault/keys:ro
+      - vault_data:/vault/data:ro
+      - vault_backups:/vault/backups
+      - vault_certs:/vault/certs:ro
+      - ./scripts/backup:/backup/scripts:ro
+      - ./config:/backup/config:ro
+      - ./policies:/backup/policies:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: /backup/scripts/core/backup-vault.sh
+    networks:
+      - vault_network
+    restart: "no"  # Runs on schedule via external scheduler
+    
+  # Scheduler using Ofelia
+  backup-scheduler:
+    image: mcuadros/ofelia:latest
+    container_name: vault-backup-scheduler
+    profiles:
+      - backup
+    depends_on:
+      - vault
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - vault_network
+    command: daemon --docker
+    labels:
+      ofelia.job-run.vault-backup.schedule: "${BACKUP_SCHEDULE:-0 0 * * * *}"
+      ofelia.job-run.vault-backup.container: "vault-backup"
+    restart: unless-stopped
+    
+  # Manual backup runner (for one-off backups)
+  vault-backup-manual:
+    image: hashicorp/vault:latest
+    container_name: vault-backup-manual
+    profiles:
+      - backup-manual
+    depends_on:
+      - vault
+    environment:
+      VAULT_ADDR: http://vault:8200
+    volumes:
+      - vault_keys:/vault/keys:ro
+      - vault_data:/vault/data:ro
+      - vault_backups:/vault/backups
+      - vault_certs:/vault/certs:ro
+      - ./scripts/backup:/backup/scripts:ro
+      - ./config:/backup/config:ro
+      - ./policies:/backup/policies:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    entrypoint: /backup/scripts/core/backup-vault.sh
+    networks:
+      - vault_network
+    restart: "no"
+
+volumes:
+  vault_backups:
+    driver: local
+
+networks:
+  vault_network:
+    external: true
+    name: vault-raft_vault

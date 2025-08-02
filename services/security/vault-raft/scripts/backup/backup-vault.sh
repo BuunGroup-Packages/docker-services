@@ -14,7 +14,7 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 BACKUP_ROOT="${PROJECT_ROOT}/backups"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
@@ -182,7 +182,7 @@ EOF
     [ "$TLS_MODE" = "true" ] && echo -e "  - TLS private keys"
     
     echo -e "\n${BLUE}To restore this backup, run:${NC}"
-    echo -e "  ./scripts/restore-vault.sh ${TIMESTAMP}"
+    echo -e "  ./scripts/backup/restore-vault.sh ${TIMESTAMP}"
 }
 
 # Run main function
