@@ -28,7 +28,6 @@ ssl/
 *.tar.gz
 *.zip
 *.bak
-backup/
 backups/
 
 # Logs

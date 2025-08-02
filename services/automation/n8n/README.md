@@ -36,8 +36,9 @@ Free and open fair-code licensed workflow automation tool.
    ```
 
 5. Access n8n at `http://localhost:5678`
-   - Username: admin (from .env)
-   - Password: your-password (from .env)
+   - On first access, you'll be prompted to create an owner account
+   - Use a strong email and password for the admin user
+   - This replaces the deprecated basic auth system
 
 ## Configuration
 
@@ -45,8 +46,9 @@ Free and open fair-code licensed workflow automation tool.
 
 Essential environment variables:
 - `N8N_ENCRYPTION_KEY`: Encrypts credentials (required)
-- `N8N_BASIC_AUTH_USER/PASSWORD`: Web UI authentication
 - `WEBHOOK_URL`: Public URL for webhooks
+- `POSTGRES_PASSWORD`: Database password
+- `REDIS_PASSWORD`: Redis password (optional but recommended)
 
 ### Database
 

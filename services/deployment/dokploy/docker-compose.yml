@@ -10,9 +10,10 @@ services:
       - dokploy_data:/app/data
       - ./backups:/app/backups
     environment:
-      - DATABASE_URL=file:/app/data/dokploy.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-dokploy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dokploy}
       - REDIS_URL=redis://redis:6379
       - SECRET_KEY=${SECRET_KEY}
+      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-${SECRET_KEY}}
       - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD}
       - WEBHOOK_SECRET=${WEBHOOK_SECRET}
@@ -28,6 +29,8 @@ services:
       - BASE_URL=${BASE_URL:-http://localhost:3000}
     depends_on:
       redis:
+        condition: service_healthy
+      postgres:
         condition: service_healthy
     networks:
       - dokploy_network
