@@ -48,11 +48,17 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
-      - ./traefik/dynamic:/etc/dokploy/traefik/dynamic
-      - ./traefik/certs:/etc/certs
+      - /etc/dokploy/traefik/dynamic:/etc/dokploy/traefik/dynamic
     networks:
       - dokploy-network
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.file.directory=/etc/dokploy/traefik/dynamic"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--api.insecure=true"
 
 volumes:
   postgres-data:
