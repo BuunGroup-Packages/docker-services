@@ -98,8 +98,8 @@ Set environment variables in Dokploy UI:
 ### Update Dokploy
 
 ```bash
-docker-compose pull
-docker-compose up -d
+docker compose pull
+docker compose up -d
 ```
 
 ### Backup Data
@@ -113,7 +113,7 @@ Docker volumes contain all data:
 
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
 docker logs dokploy -f
@@ -146,7 +146,7 @@ If ports 80/443 are in use:
 
 1. Check services are running:
    ```bash
-   docker-compose ps
+   docker compose ps
    ```
 
 2. Check logs for errors:

@@ -105,7 +105,7 @@ networks:
 ### View Logs
 ```bash
 # All services
-docker-compose logs -f
+docker compose logs -f
 
 # Specific service
 docker logs dokploy -f
@@ -113,8 +113,8 @@ docker logs dokploy -f
 
 ### Update Dokploy
 ```bash
-docker-compose pull
-docker-compose up -d
+docker compose pull
+docker compose up -d
 ```
 
 ### Backup Data
@@ -126,7 +126,7 @@ All data is stored in Docker volumes:
 ## Troubleshooting
 
 ### Cannot Access Dokploy
-1. Check if services are running: `docker-compose ps`
+1. Check if services are running: `docker compose ps`
 2. Check logs: `docker logs dokploy`
 3. Verify port: `curl http://localhost:3000`
 

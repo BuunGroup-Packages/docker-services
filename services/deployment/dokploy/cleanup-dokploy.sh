@@ -28,7 +28,7 @@ fi
 
 # Stop and remove containers
 echo -e "${YELLOW}Stopping Dokploy services...${NC}"
-docker-compose down 2>/dev/null || true
+docker compose down 2>/dev/null || true
 
 # Remove volumes
 echo -e "${YELLOW}Removing Docker volumes...${NC}"
