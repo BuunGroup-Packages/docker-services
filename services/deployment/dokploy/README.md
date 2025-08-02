@@ -1,89 +1,151 @@
-# Dokploy - Open Source Deployment Platform
+# Dokploy - Self-Hosted PaaS
 
-Dokploy is an open-source alternative to Vercel/Netlify/Heroku for deploying applications.
+Dokploy is a free, self-hostable Platform as a Service (PaaS) that simplifies application deployment using Docker.
 
 ## Features
 
-- Deploy applications from GitHub
-- Automatic SSL certificates
-- Database management (PostgreSQL, MySQL, MongoDB)
-- Redis support
-- Environment variables management
-- Custom domains
-- Webhook deployments
-- Docker-based deployments
+- 🚀 Deploy applications from Git, Docker images, or Docker Compose
+- 🔧 Built-in database support (PostgreSQL, MySQL, MongoDB, Redis)
+- 🔒 Automatic SSL with Let's Encrypt via Traefik
+- 🌐 Multi-domain support
+- 📊 Real-time logs and monitoring
+- 🔄 Zero-downtime deployments
+- 🎯 Simple UI for managing deployments
 
 ## Quick Start
 
-1. Copy environment file:
+1. **Deploy Dokploy**:
    ```bash
-   cp .env.example .env
+   ./deploy-dokploy.sh
    ```
 
-2. Generate a secret key:
-   ```bash
-   openssl rand -hex 32
-   ```
-   Add this to SECRET_KEY in .env
+2. **Access the UI**:
+   - Navigate to http://localhost:3000 (or your configured port)
+   - Register your admin account on first visit
 
-3. Update passwords and configuration in `.env`
+3. **Deploy your first app**:
+   - Click "Create Project"
+   - Choose your deployment method (Git, Docker, Docker Compose)
+   - Follow the guided setup
 
-4. Start Dokploy:
-   ```bash
-   docker compose up -d
-   ```
+## Scripts
 
-5. Access Dokploy at `http://localhost:3000`
+- `deploy-dokploy.sh` - Deploy Dokploy with all services
+- `cleanup-dokploy.sh` - Remove Dokploy and all data
 
-## Initial Setup
+## Configuration
 
-1. Navigate to the web interface
-2. Create your admin account using the credentials from .env
-3. Configure your domains and SSL settings
-4. Connect your GitHub account (optional)
-
-## Environment Variables
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| SECRET_KEY | Encryption key (min 32 chars) | Yes |
-| ADMIN_EMAIL | Admin email address | Yes |
-| ADMIN_PASSWORD | Admin password | Yes |
-| WEBHOOK_SECRET | Secret for webhook validation | Yes |
-| BASE_URL | Public URL of Dokploy | Yes |
-| POSTGRES_PASSWORD | Database password | Yes |
-
-## GitHub Integration
-
-To enable GitHub deployments:
-
-1. Create a GitHub App
-2. Add the App ID and Private Key to .env
-3. Configure OAuth with Client ID and Secret
-
-## Backup
-
-Dokploy data is stored in:
-- `dokploy_data`: Application data and SQLite database
-- `postgres_data`: PostgreSQL data (if using external apps)
-- `./backups`: Backup directory
-
-To backup:
+Minimal configuration needed in `.env`:
 ```bash
-docker compose exec dokploy dokploy backup
+DOKPLOY_PORT=3000        # UI port (default: 3000)
+ADVERTISE_ADDR=127.0.0.1 # Server IP address
 ```
 
-## Security Notes
+The deploy script will:
+- Create `.env` from example if it doesn't exist
+- Ask for custom port during setup
+- Check for port conflicts before starting
+- Set up all required directories
+- Wait for services to be ready
 
-- Change all default passwords
-- Use a strong SECRET_KEY
-- Configure firewall rules
-- Enable SSL for production
-- Regularly update the Docker image
+## Architecture
+
+Dokploy runs with four main services:
+
+```
+┌─────────────┐     ┌────────────┐     ┌─────────┐
+│   Dokploy   │────▶│ PostgreSQL │     │  Redis  │
+│     UI      │     └────────────┘     └─────────┘
+└──────┬──────┘              
+       │                     
+       ▼                     
+┌─────────────┐     ┌─────────────────────────────┐
+│   Traefik   │────▶│     Your Applications       │
+│ (80/443)    │     │  (Connected via network)    │
+└─────────────┘     └─────────────────────────────┘
+```
+
+## Deploying Applications
+
+### Via Dokploy UI
+
+1. Create a new project
+2. Configure deployment source:
+   - **Git**: Connect GitHub/GitLab repository
+   - **Docker Image**: Deploy from Docker Hub
+   - **Docker Compose**: Upload compose file
+
+3. Set environment variables
+4. Configure domains
+5. Deploy!
+
+### Docker Compose Example
+
+For apps deployed via Docker Compose:
+
+```yaml
+services:
+  your-app:
+    image: your-app:latest
+    networks:
+      - dokploy-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.your-app.rule=Host(`app.yourdomain.com`)"
+      - "traefik.http.routers.your-app.entrypoints=websecure"
+      - "traefik.http.routers.your-app.tls.certResolver=letsencrypt"
+
+networks:
+  dokploy-network:
+    external: true
+```
+
+## Maintenance
+
+### View Logs
+```bash
+# All services
+docker-compose logs -f
+
+# Specific service
+docker logs dokploy -f
+```
+
+### Update Dokploy
+```bash
+docker-compose pull
+docker-compose up -d
+```
+
+### Backup Data
+All data is stored in Docker volumes:
+- `dokploy_postgres-data` - Database
+- `dokploy_redis-data` - Cache
+- `dokploy_dokploy-docker-config` - Docker configs
 
 ## Troubleshooting
 
-- Check logs: `docker compose logs dokploy`
-- Ensure Docker socket is accessible
-- Verify all required environment variables are set
-- Check that ports are not already in use
+### Cannot Access Dokploy
+1. Check if services are running: `docker-compose ps`
+2. Check logs: `docker logs dokploy`
+3. Verify port: `curl http://localhost:3000`
+
+### Port Conflicts
+- The deploy script checks for conflicts on ports 80, 443, and your chosen Dokploy port
+- Stop conflicting services or modify `docker-compose.yml`
+
+### Complete Reset
+```bash
+./cleanup-dokploy.sh  # Warning: Deletes all data!
+./deploy-dokploy.sh   # Fresh install
+```
+
+## Documentation
+
+- [Deployment Guide](DEPLOYMENT_GUIDE.md) - Detailed deployment instructions
+- [Official Docs](https://docs.dokploy.com) - Complete documentation
+- [GitHub](https://github.com/dokploy/dokploy) - Source code and issues
+
+## License
+
+Dokploy is open source software.

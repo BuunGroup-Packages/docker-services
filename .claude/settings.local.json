@@ -28,7 +28,9 @@
       "Bash(crontab:*)",
       "Bash(# Move core backup functionality\nmv backup-vault.sh core/\nmv restore-vault.sh core/\nmv list-backups.sh core/\nmv verify-backup.sh core/\n\n# Move enterprise deployment files\nmv vault-backup.service enterprise/systemd/\nmv vault-backup.timer enterprise/systemd/\nmv setup-backup-service.sh enterprise/\n\n# Move configuration files\nmv backup-config.sh config/\n\n# Keep backward compatibility scripts in main folder for now\necho ''#!/bin/bash\n# Backward compatibility wrapper\nexec \"\"$(dirname \"\"$0\"\")/core/backup-vault.sh\"\" \"\"$@\"\"'' > backup-vault.sh\n\necho ''#!/bin/bash\n# Backward compatibility wrapper\nexec \"\"$(dirname \"\"$0\"\")/core/restore-vault.sh\"\" \"\"$@\"\"'' > restore-vault.sh\n\necho ''#!/bin/bash\n# Backward compatibility wrapper\nexec \"\"$(dirname \"\"$0\"\")/core/list-backups.sh\"\" \"\"$@\"\"'' > list-backups.sh\n\nchmod +x backup-vault.sh restore-vault.sh list-backups.sh)",
       "WebFetch(domain:docs.n8n.io)",
-      "mcp__brave-search__brave_web_search"
+      "mcp__brave-search__brave_web_search",
+      "WebFetch(domain:docs.dokploy.com)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": []
   }

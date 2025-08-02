@@ -1,4 +1,26 @@
 services:
+  postgres:
+    image: postgres:15
+    container_name: dokploy-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: dokploy
+      POSTGRES_DB: dokploy
+      POSTGRES_PASSWORD: amukds4wi9001583845717ad2
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - dokploy-network
+
+  redis:
+    image: redis:7
+    container_name: dokploy-redis
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    networks:
+      - dokploy-network
+
   dokploy:
     image: dokploy/dokploy:latest
     container_name: dokploy
@@ -7,96 +29,37 @@ services:
       - "${DOKPLOY_PORT:-3000}:3000"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - dokploy_data:/app/data
-      - ./backups:/app/backups
+      - /etc/dokploy:/etc/dokploy
+      - dokploy-docker-config:/root/.docker
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-dokploy}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-dokploy}
-      - REDIS_URL=redis://redis:6379
-      - SECRET_KEY=${SECRET_KEY}
-      - BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET:-${SECRET_KEY}}
-      - ADMIN_EMAIL=${ADMIN_EMAIL:-admin@example.com}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
-      - GITHUB_APP_ID=${GITHUB_APP_ID}
-      - GITHUB_APP_PRIVATE_KEY=${GITHUB_APP_PRIVATE_KEY}
-      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID}
-      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET}
-      - SMTP_HOST=${SMTP_HOST}
-      - SMTP_PORT=${SMTP_PORT:-587}
-      - SMTP_USER=${SMTP_USER}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-      - SMTP_FROM=${SMTP_FROM:-noreply@example.com}
-      - BASE_URL=${BASE_URL:-http://localhost:3000}
+      ADVERTISE_ADDR: ${ADVERTISE_ADDR:-127.0.0.1}
+    networks:
+      - dokploy-network
     depends_on:
-      redis:
-        condition: service_healthy
-      postgres:
-        condition: service_healthy
-    networks:
-      - dokploy_network
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - postgres
+      - redis
 
-  redis:
-    image: redis:7-alpine
-    container_name: dokploy-redis
+  traefik:
+    image: traefik:v3.1.2
+    container_name: dokploy-traefik
     restart: unless-stopped
-    command: redis-server --save 60 1 --loglevel warning
+    ports:
+      - "80:80"
+      - "443:443"
     volumes:
-      - redis_data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+      - ./traefik/dynamic:/etc/dokploy/traefik/dynamic
+      - ./traefik/certs:/etc/certs
     networks:
-      - dokploy_network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-  postgres:
-    image: postgres:16-alpine
-    container_name: dokploy-postgres
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-dokploy}
-      POSTGRES_USER: ${POSTGRES_USER:-dokploy}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      PGDATA: /var/lib/postgresql/data/pgdata
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - dokploy_network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dokploy} -d ${POSTGRES_DB:-dokploy}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - dokploy-network
 
 volumes:
-  dokploy_data:
-    driver: local
-  redis_data:
-    driver: local
-  postgres_data:
-    driver: local
+  postgres-data:
+  redis-data:
+  dokploy-docker-config:
 
 networks:
-  dokploy_network:
+  dokploy-network:
     driver: bridge
+    name: dokploy-network
