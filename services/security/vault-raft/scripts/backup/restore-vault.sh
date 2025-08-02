@@ -14,8 +14,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BACKUP_ROOT="${PROJECT_ROOT}/backups"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+BACKUP_ROOT="/var/log/vault-backup"
 
 echo -e "${BLUE}=== Vault Restore Script ===${NC}"
 echo ""
@@ -83,12 +83,12 @@ confirm() {
     fi
 }
 
-# Function to stop vault if running
-stop_vault() {
-    if docker ps --format '{{.Names}}' | grep -q "^vault"; then
-        echo -e "${YELLOW}Stopping existing Vault containers...${NC}"
-        cd "$PROJECT_ROOT"
-        ./scripts/cleanup.sh
+# Function to check if vault is running
+check_vault_running() {
+    if ! docker ps --format '{{.Names}}' | grep -q "^vault$"; then
+        echo -e "${RED}Error: Vault container is not running${NC}"
+        echo -e "${RED}Please start Vault first with: ./scripts/start/start.sh${NC}"
+        exit 1
     fi
 }
 
@@ -128,62 +128,46 @@ main() {
     echo ""
     
     # Confirm restoration
-    confirm "WARNING: This will replace ALL current Vault data! Are you sure?"
+    confirm "WARNING: This will restore the Vault snapshot! Are you sure?"
     
-    # Stop existing Vault
-    stop_vault
+    # Check if Vault is running
+    check_vault_running
     
     echo -e "\n${BLUE}Starting restoration...${NC}"
     
-    # 1. Restore configuration
-    echo -e "\n${YELLOW}1. Restoring configuration...${NC}"
-    cd "$PROJECT_ROOT"
+    # 1. First check if Vault is sealed and unseal it if needed
+    echo -e "\n${YELLOW}1. Checking Vault status...${NC}"
+    VAULT_STATUS=$(docker exec vault vault status -format=json 2>/dev/null || echo '{"sealed":true}')
+    SEALED=$(echo "$VAULT_STATUS" | grep -o '"sealed":[^,}]*' | cut -d':' -f2 | tr -d ' ')
     
-    # Backup current config (just in case)
-    if [ -d "config" ] || [ -d "policies" ]; then
-        echo "  Backing up current configuration..."
-        mkdir -p "${BACKUP_ROOT}/pre-restore-${BACKUP_TIMESTAMP}"
-        tar czf "${BACKUP_ROOT}/pre-restore-${BACKUP_TIMESTAMP}/current-config.tar.gz" \
-            config/ policies/ scripts/ docker-compose*.yml .env* 2>/dev/null || true
-    fi
-    
-    # Extract configuration
-    tar xzf "$BACKUP_DIR/vault-config.tar.gz"
-    echo -e "${GREEN}✓ Configuration restored${NC}"
-    
-    # 2. Restore TLS certificates (if present)
-    if [ "$TLS_ENABLED" = "true" ] && [ -f "$BACKUP_DIR/vault-certs.tar.gz" ]; then
-        echo -e "\n${YELLOW}2. Restoring TLS certificates...${NC}"
-        tar xzf "$BACKUP_DIR/vault-certs.tar.gz"
-        echo -e "${GREEN}✓ TLS certificates restored${NC}"
-    elif [ "$TLS_ENABLED" = "true" ]; then
-        echo -e "${YELLOW}Warning: Backup has TLS enabled but no certificates found${NC}"
-    fi
-    
-    # 3. Start Vault
-    echo -e "\n${YELLOW}3. Starting Vault...${NC}"
-    if [ "$TLS_ENABLED" = "true" ]; then
-        ./scripts/start.sh --tls --no-init
+    if [ "$SEALED" = "true" ]; then
+        echo "  Vault is sealed. Unsealing first..."
+        
+        # Get unseal keys from volume
+        UNSEAL_KEYS=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/unseal-keys.txt 2>/dev/null || echo "")
+        if [ -z "$UNSEAL_KEYS" ]; then
+            UNSEAL_KEYS=$(docker run --rm -v vault_vault_keys:/keys:ro busybox cat /keys/unseal-keys.txt 2>/dev/null || echo "")
+        fi
+        
+        if [ -n "$UNSEAL_KEYS" ]; then
+            # Apply first 3 keys
+            for i in 1 2 3; do
+                KEY=$(echo "$UNSEAL_KEYS" | sed -n "${i}p")
+                if [ -n "$KEY" ]; then
+                    docker exec vault vault operator unseal "$KEY" >/dev/null 2>&1
+                    echo -e "  ${GREEN}✓ Applied unseal key $i${NC}"
+                fi
+            done
+        else
+            echo -e "${RED}Error: Vault is sealed and no unseal keys found${NC}"
+            exit 1
+        fi
     else
-        ./scripts/start.sh --no-init
+        echo -e "  ${GREEN}✓ Vault is already unsealed${NC}"
     fi
     
-    # Wait for Vault to be ready
-    echo "  Waiting for Vault to start..."
-    sleep 10
-    
-    # 4. Restore keys
-    if [ -f "$BACKUP_DIR/vault-keys.tar.gz" ]; then
-        echo -e "\n${YELLOW}4. Restoring initialization keys...${NC}"
-        docker run --rm \
-            -v vault-raft_vault_keys:/keys \
-            -v "$BACKUP_DIR":/backup:ro \
-            busybox tar xzf /backup/vault-keys.tar.gz -C /keys
-        echo -e "${GREEN}✓ Keys restored${NC}"
-    fi
-    
-    # 5. Restore Raft snapshot
-    echo -e "\n${YELLOW}5. Restoring Raft snapshot...${NC}"
+    # 2. Now restore Raft snapshot to unsealed Vault
+    echo -e "\n${YELLOW}2. Restoring Raft snapshot...${NC}"
     
     # Copy snapshot to container
     docker cp "$BACKUP_DIR/vault-raft.snap" vault:/tmp/restore.snap
@@ -220,26 +204,39 @@ main() {
     docker exec vault rm -f /tmp/restore.snap
     echo -e "${GREEN}✓ Raft snapshot restored${NC}"
     
-    # 6. Restart Vault to ensure clean state
-    echo -e "\n${YELLOW}6. Restarting Vault...${NC}"
+    # 3. Restart Vault to ensure clean state
+    echo -e "\n${YELLOW}3. Restarting Vault...${NC}"
     docker restart vault
     sleep 5
     
-    # 7. Unseal Vault
-    echo -e "\n${YELLOW}7. Unsealing Vault...${NC}"
-    echo -e "Vault needs to be unsealed with 3 keys."
+    # 4. Unseal Vault after restart
+    echo -e "\n${YELLOW}4. Unsealing Vault after restart...${NC}"
     
-    # Try to auto-unseal if we have the keys
-    if docker exec vault test -f /vault/keys/unseal-keys.txt 2>/dev/null; then
-        echo "  Found unseal keys, attempting automatic unseal..."
+    # Try to get unseal keys from volume
+    echo "  Retrieving unseal keys from secure storage..."
+    
+    # Create temporary container to read keys
+    UNSEAL_KEYS=$(docker run --rm -v vault-raft_vault_keys:/keys:ro busybox cat /keys/unseal-keys.txt 2>/dev/null || echo "")
+    
+    if [ -z "$UNSEAL_KEYS" ]; then
+        # Try alternative volume name
+        UNSEAL_KEYS=$(docker run --rm -v vault_vault_keys:/keys:ro busybox cat /keys/unseal-keys.txt 2>/dev/null || echo "")
+    fi
+    
+    if [ -n "$UNSEAL_KEYS" ]; then
+        echo -e "  ${GREEN}✓ Found unseal keys${NC}"
+        echo "  Applying unseal keys..."
+        
+        # Apply first 3 keys
         for i in 1 2 3; do
-            KEY=$(docker exec vault sed -n "${i}p" /vault/keys/unseal-keys.txt 2>/dev/null)
+            KEY=$(echo "$UNSEAL_KEYS" | sed -n "${i}p")
             if [ -n "$KEY" ]; then
                 docker exec vault vault operator unseal "$KEY" >/dev/null 2>&1
                 echo -e "  ${GREEN}✓ Applied unseal key $i${NC}"
             fi
         done
     else
+        echo -e "${YELLOW}  No unseal keys found in volume${NC}"
         echo "  Please enter unseal keys manually:"
         for i in 1 2 3; do
             docker exec -it vault vault operator unseal

@@ -15,11 +15,22 @@ NC='\033[0m' # No Color
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
-BACKUP_ROOT="${PROJECT_ROOT}/backups"
+BACKUP_ROOT="/var/log/vault-backup"
 TIMESTAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP_DIR="${BACKUP_ROOT}/${TIMESTAMP}"
 
 # Ensure backup directory exists
+if [ ! -d "$BACKUP_ROOT" ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        echo -e "${YELLOW}Creating backup directory with sudo...${NC}"
+        sudo mkdir -p "$BACKUP_ROOT"
+        sudo chmod 777 "$BACKUP_ROOT"
+    else
+        echo -e "${RED}Error: Cannot create $BACKUP_ROOT (permission denied)${NC}"
+        echo -e "${RED}Please run: sudo mkdir -p $BACKUP_ROOT && sudo chmod 777 $BACKUP_ROOT${NC}"
+        exit 1
+    fi
+fi
 mkdir -p "$BACKUP_DIR"
 
 echo -e "${BLUE}=== Vault Backup Script ===${NC}"
@@ -142,8 +153,16 @@ EOF
     # 4. Backup TLS certificates (if present)
     if [ "$TLS_MODE" = "true" ]; then
         echo -e "\n${BLUE}4. Backing up TLS certificates...${NC}"
-        tar czf "${BACKUP_DIR}/vault-certs.tar.gz" -C "$PROJECT_ROOT" certs/
-        echo -e "${GREEN}✓ TLS certificates backed up${NC}"
+        # Backup from Docker volume which has all certificates
+        if docker volume ls --format '{{.Name}}' | grep -q '^vault-raft_vault_certs$'; then
+            docker run --rm \
+                -v vault-raft_vault_certs:/certs:ro \
+                -v "${BACKUP_DIR}":/backup \
+                busybox tar czf /backup/vault-certs.tar.gz -C /certs .
+            echo -e "${GREEN}✓ TLS certificates backed up from volume${NC}"
+        else
+            echo -e "${YELLOW}! Certificate volume not found${NC}"
+        fi
     fi
     
     # 5. Calculate backup size

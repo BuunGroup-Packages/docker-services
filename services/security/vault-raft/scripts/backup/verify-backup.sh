@@ -12,8 +12,8 @@ NC='\033[0m' # No Color
 
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-BACKUP_ROOT="${PROJECT_ROOT}/backups"
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
+BACKUP_ROOT="/var/log/vault-backup"
 
 echo -e "${BLUE}=== Vault Backup Verification ===${NC}"
 echo ""
