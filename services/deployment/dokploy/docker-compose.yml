@@ -11,11 +11,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - dokploy-network
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dokploy"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7
@@ -25,18 +20,13 @@ services:
       - redis-data:/data
     networks:
       - dokploy-network
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   dokploy:
     image: dokploy/dokploy:latest
     container_name: dokploy
     restart: unless-stopped
     expose:
-      - 3000  # Use expose, not ports!
+      - 3000
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - /etc/dokploy:/etc/dokploy
@@ -46,16 +36,8 @@ services:
     networks:
       - dokploy-network
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.dokploy.rule=Host(`${DOKPLOY_DOMAIN:-localhost}`)"
-      - "traefik.http.routers.dokploy.entrypoints=web"
-      - "traefik.http.services.dokploy.loadbalancer.server.port=3000"
-      - "traefik.docker.network=dokploy-network"
+      - postgres
+      - redis
 
   traefik:
     image: traefik:v3.1.2
@@ -66,18 +48,11 @@ services:
       - "443:443"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-      - /etc/dokploy/traefik/dynamic:/etc/dokploy/traefik/dynamic
+      - ./traefik/traefik.yml:/etc/traefik/traefik.yml
+      - ./traefik/dynamic:/etc/dokploy/traefik/dynamic
+      - ./traefik/certs:/etc/certs
     networks:
       - dokploy-network
-    command:
-      - "--providers.docker=true"
-      - "--providers.docker.exposedbydefault=false"
-      - "--providers.docker.network=dokploy-network"
-      - "--providers.file.directory=/etc/dokploy/traefik/dynamic"
-      - "--providers.file.watch=true"
-      - "--entrypoints.web.address=:80"
-      - "--entrypoints.websecure.address=:443"
-      - "--api.insecure=true"
 
 volumes:
   postgres-data:
