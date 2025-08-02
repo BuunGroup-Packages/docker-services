@@ -40,16 +40,18 @@ Services:
 
 ### Environment Variables
 
-Only two environment variables are needed in `.env`:
+Minimal environment variables needed in `.env`:
 
 ```bash
-DOKPLOY_PORT=3000        # Port for Dokploy UI
-ADVERTISE_ADDR=127.0.0.1 # Server IP address
+ADVERTISE_ADDR=127.0.0.1 # Server IP address (use public IP for cloud deployments)
+
+# Optional: Custom domain (if not using localhost)
+DOKPLOY_DOMAIN=deploy.example.com
 ```
 
 ### Ports Used
 
-- **Dokploy UI**: Configured port (default 3000)
+- **Dokploy UI**: Accessed through Traefik (no direct port exposure)
 - **HTTP**: Port 80 (Traefik)
 - **HTTPS**: Port 443 (Traefik)
 
